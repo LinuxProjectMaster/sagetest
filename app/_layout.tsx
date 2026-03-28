@@ -5,9 +5,11 @@ import { StatusBar } from 'expo-status-bar';
 import 'react-native-reanimated';
 
 import { useColorScheme } from '@/hooks/useColorScheme';
+import { PaperProvider } from 'react-native-paper';
 
 export default function RootLayout() {
   const colorScheme = useColorScheme();
+  
   const [loaded] = useFonts({
     SpaceMono: require('../assets/fonts/SpaceMono-Regular.ttf'),
   });
@@ -18,12 +20,16 @@ export default function RootLayout() {
   }
 
   return (
+    <PaperProvider>
     <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
-      <Stack>
-        <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+      <Stack initialRouteName="Home" >
+        <Stack.Screen name="Home" options={{ headerShown: false }} />
         <Stack.Screen name="+not-found" />
+        <Stack.Screen name="features/journal" options={{ title: "Journal" }}/>
+        <Stack.Screen name="features/explore" options={{ title: "Upload Photo" }}/>
       </Stack>
       <StatusBar style="auto" />
     </ThemeProvider>
+    </PaperProvider>
   );
 }
