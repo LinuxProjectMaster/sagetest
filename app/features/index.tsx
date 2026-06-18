@@ -1,30 +1,87 @@
-import { Link } from "expo-router";
-import { ImageBackground, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Poppins_400Regular, Poppins_600SemiBold, Poppins_700Bold, Poppins_800ExtraBold, useFonts } from "@expo-google-fonts/poppins";
+import { signOut } from "aws-amplify/auth";
+import { Link, useRouter } from "expo-router";
+import {
+  Image,
+  StatusBar,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View
+} from "react-native";
 
-const gardenImage = { uri: "https://billzipp.com/wp-content/uploads/journal-2850091_1920-1024x683.jpg" };
+const gardenImage = require('/Users/davidschauder/sagetest/assets/images/journal_img.jpg');
+const sageLogo = require('/Users/davidschauder/sagetest/assets/images/img.png');
 
 export default function HomeScreen() {
+  const router = useRouter();
+
+  const [fontsLoaded] = useFonts({
+    Poppins_400Regular,
+    Poppins_600SemiBold,
+    Poppins_700Bold,
+    Poppins_800ExtraBold,
+  });
+
+  async function handleLogout() {
+    try {
+      await signOut();
+      router.replace("/"); // navigates to auth/login after sign out
+    } catch (e) {
+      console.error("Sign out error:", e);
+    }
+  }
+
+  if (!fontsLoaded) return null;
+
   return (
     <View style={styles.container}>
-      <ImageBackground source={gardenImage} style={styles.background} resizeMode="cover">
+      <StatusBar barStyle="light-content" />
 
-        <Text style={styles.titleText}>
-          Welcome to the Sage Observer
-        </Text>
+        <View style={styles.overlay} />
 
-        <View style={styles.buttonContainer}>
-          <Link href={"/features/explore"} asChild>
-            <TouchableOpacity style={styles.button}>
-              <Text style={styles.buttonText}>Upload Photo</Text>
-            </TouchableOpacity>
-          </Link>
-          <Link href={"/features/journal"} asChild>
-            <TouchableOpacity style={styles.button}>
-              <Text style={styles.buttonText}>View Journal</Text>
-            </TouchableOpacity>
-          </Link>
+        {/* Top bar */}
+        <View style={styles.topBar}>
+          <Image source={sageLogo} style={styles.logo} resizeMode="contain" />
+          <TouchableOpacity style={styles.logoutButton} onPress={handleLogout}>
+            <Text style={styles.logoutText}>Sign Out</Text>
+          </TouchableOpacity>
         </View>
-      </ImageBackground>
+
+        {/* Hero content */}
+        <View style={styles.heroContent}>
+          <Text style={styles.eyebrow}>YOUR GARDEN COMPANION</Text>
+          <Text style={styles.titleText}>The Sage{"\n"}Observer</Text>
+          <Text style={styles.subtitleText}>
+            Document, explore, and grow your botanical world
+          </Text>
+        </View>
+
+        {/* Bottom action area */}
+        <View style={styles.actionArea}>
+          <View style={styles.divider} />
+          <View style={styles.buttonContainer}>
+            <Link href={"/features/explore"} asChild>
+              <TouchableOpacity style={styles.primaryButton} activeOpacity={0.85}>
+                <Text style={styles.primaryButtonIcon}>📷</Text>
+                <View>
+                  <Text style={styles.primaryButtonLabel}>UPLOAD PHOTO</Text>
+                  <Text style={styles.primaryButtonSub}>Take pictures of your garden</Text>
+                </View>
+              </TouchableOpacity>
+            </Link>
+
+            <Link href={"/features/journal"} asChild>
+              <TouchableOpacity style={styles.secondaryButton} activeOpacity={0.85}>
+                <Text style={styles.secondaryButtonIcon}>📖</Text>
+                <View>
+                  <Text style={styles.secondaryButtonLabel}>VIEW JOURNAL</Text>
+                  <Text style={styles.secondaryButtonSub}>Your observations</Text>
+                </View>
+              </TouchableOpacity>
+            </Link>
+          </View>
+        </View>
     </View>
   );
 }
@@ -32,41 +89,133 @@ export default function HomeScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+    backgroundColor: "#d0d7c9"
   },
   background: {
     flex: 1,
+  },
+
+  // Top bar
+  topBar: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingTop: 40,
+    paddingHorizontal: 24,
+  },
+  logo: {
+    width: 100,
+    height: 100,
+  },
+  logoutButton: {
+    paddingVertical: 7,
+    paddingHorizontal: 16,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: "#a2aca4",
+    backgroundColor: "#656e5f",
+  },
+  logoutText: {
+    color: "#d0d7cc",
+    fontSize: 13,
+    fontFamily: "Poppins_600SemiBold",
+    letterSpacing: 0.2,
+  },
+
+  // Hero
+  heroContent: {
+    flex: 1,
     justifyContent: "center",
+    paddingHorizontal: 28,
+    paddingTop: 20,
   },
   titleText: {
-    textAlign: 'center',
-    margin: 20,
-    fontSize: 32,
-    color: "#fff",
-    textShadowOffset: { width: 1, height: 1 },
-    textShadowRadius: 4,
+    fontSize: 54,
+    fontFamily: "Poppins_400Regular",
+    color: "#656e5f",
+    lineHeight: 60,
+    letterSpacing: -0.5,
+    marginBottom: 10,
+    marginTop: 10
+  },
+  eyebrow: {
+    color: "#81c784",
+    fontSize: 11,
+    fontWeight: "400",
+    letterSpacing: 3,
+    marginBottom: 12,
+  },
+  subtitleText: {
+    color: "#656e5f",
+    fontSize: 14,
+    lineHeight: 22,
+    fontFamily: "Poppins_400Regular",
+    maxWidth: 270,
+  },
+
+  // Actions
+  actionArea: {
+    paddingBottom: 52,
+    paddingHorizontal: 24,
+  },
+  divider: {
+    height: 1,
+    backgroundColor: "#656e5f",
+    marginBottom: 22,
+    opacity: 0.5,
   },
   buttonContainer: {
-    width: '100%',
-    alignItems: 'center',
+    gap: 12,
+  },
+  primaryButton: {
+    flexDirection: "row",
+    alignItems: "center",
     gap: 16,
-    position: "absolute",
-    bottom: 100,
-  },
-  button: {
-    backgroundColor: '#2E7D32', 
+    backgroundColor: "#514942",
     paddingVertical: 18,
-    paddingHorizontal: 26,
-    borderRadius: 12,
-    width: '75%',
-    alignItems: 'center',
-    shadowColor: "#000",
-    shadowOpacity: 0.2,
-    shadowRadius: 6,
-    elevation: 3,
+    paddingHorizontal: 22,
+    borderRadius: 14,
+
   },
-  buttonText: {
-    color: '#fff',
-    fontSize: 18,
-    fontWeight: '600',
+  primaryButtonIcon: {
+    fontSize: 24,
+  },
+  primaryButtonLabel: {
+    color: "#d0d7cc",
+    fontSize: 12,
+    fontFamily: "Poppins_700Bold",
+    letterSpacing: 1.5,
+  },
+  primaryButtonSub: {
+    color: "#a2aca4",
+    fontSize: 13,
+    fontFamily: "Poppins_400Regular",
+    marginTop: 2,
+  },
+  secondaryButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 16,
+    backgroundColor: "#323232",
+    paddingVertical: 18,
+    paddingHorizontal: 22,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: "#656e5f",
+  },
+  secondaryButtonIcon: {
+    fontSize: 24,
+  },
+  secondaryButtonLabel: {
+    color: "#d0d7cc",
+    fontSize: 12,
+    fontFamily: "Poppins_700Bold",
+    letterSpacing: 1.5,
+  },
+  secondaryButtonSub: {
+    color: "#a2aca4",
+    fontSize: 13,
+    fontFamily: "Poppins_400Regular",
+    marginTop: 2,
   },
 });

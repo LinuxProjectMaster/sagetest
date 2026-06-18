@@ -1,16 +1,16 @@
+import { Poppins_400Regular, Poppins_600SemiBold, Poppins_700Bold, useFonts } from "@expo-google-fonts/poppins";
 import { fetchAuthSession, getCurrentUser } from "aws-amplify/auth";
 import { uploadData } from 'aws-amplify/storage';
 import { CameraType, CameraView, useCameraPermissions } from 'expo-camera';
 import * as ImageManipulator from 'expo-image-manipulator';
 import { useRouter } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
-import { Image, Linking, Modal, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { Image, Keyboard, KeyboardAvoidingView, Linking, Modal, Platform, StyleSheet, Text, TextInput, TouchableOpacity, TouchableWithoutFeedback, View } from 'react-native';
 import DropDownPicker from 'react-native-dropdown-picker';
 import { DatePickerModal } from 'react-native-paper-dates';
 import uuid from 'react-native-uuid';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 
-  
 
 export default function TabTwoScreen() {
 
@@ -19,13 +19,19 @@ export default function TabTwoScreen() {
     const user = await getCurrentUser();
     setUserName(user.username)
   }
-  
 
-useEffect(() => {
-  getUsername();
-}, []);
+  const [fontsLoaded] = useFonts({
+    Poppins_400Regular,
+    Poppins_600SemiBold,
+    Poppins_700Bold,
+  });
 
-  const POST_URL = "https://6e3oue93qi.execute-api.us-east-1.amazonaws.com/default/journal" 
+  useEffect(() => {
+    getUsername();
+  }, []);
+
+
+  const POST_URL = "https://6e3oue93qi.execute-api.us-east-1.amazonaws.com/default/journal"
   const API_URL = "https://6e3oue93qi.execute-api.us-east-1.amazonaws.com/default/areas"
   const [textModal, setTextModal] = useState(false)
   const [date, setDate] = useState(new Date())
@@ -40,20 +46,17 @@ useEffect(() => {
   const [plantName, setPlantName] = useState(" ")
   const [areaOpen, setAreaOpen] = useState(false);
   const [plantOpen, setPlantOpen] = useState(false);
-  const [comments, setComment] = useState("")
-  const [title, setTitle] = useState("")
   const [text, setText] = useState("")
   const [apiData, setAPIData] = useState([])
   const router = useRouter();
 
 
-  
   const areaItems = Array.isArray(apiData)
-  ? apiData.map(area => ({
+    ? apiData.map(area => ({
       label: area.name,
       value: area.name,
     }))
-  : [];
+    : [];
 
   const selectedArea = Array.isArray(apiData)
     ? apiData.find(area => area.name === areaName)
@@ -61,9 +64,9 @@ useEffect(() => {
 
   const plantItems = selectedArea
     ? selectedArea.plants.map(plant => ({
-        label: plant,
-        value: plant,
-      }))
+      label: plant,
+      value: plant,
+    }))
     : [];
 
 
@@ -71,78 +74,63 @@ useEffect(() => {
     setFacing(facing === 'back' ? 'front' : 'back');
   };
 
-
-   const openSettings = () => {
+  const openSettings = () => {
     Linking.openSettings();
   };
-
 
   const returnToCam = () => {
     setPreviewPicture(false)
   }
 
-
   async function getPlantsAreas() {
     const session = await fetchAuthSession();
     const idToken = session.tokens?.idToken?.toString()
     const sageData = await fetch(API_URL, {
-        method: "GET",
-        headers: {
-          Authorization: idToken,
-          username: userName
-        }
-      });
-      const jsonData = await sageData.json()
-      return jsonData
-      
-  }
-  
-
-
-
-async function postNote(note) {
-  try {
-    const session = await fetchAuthSession();
-    const idToken = session.tokens?.idToken?.toString();
-
-    console.log("Sending POST request with note:", note);
-    console.log("Using token:", idToken ? "Token exists" : "No token");
-
-    const response = await fetch(POST_URL, {
-      method: "POST",
+      method: "GET",
       headers: {
         Authorization: idToken,
-        username: userName,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(note),
+        username: userName
+      }
     });
-
-    console.log("Response status:", response.status);
-    console.log("Response ok:", response.ok);
-
-    if (!response.ok) {
-      const text = await response.text();
-      console.error("POST failed:", response.status, text);
-      throw new Error(`POST failed: ${response.status} ${text}`);
-    }
-
-    const data = await response.json();
-    console.log("POST successful, data:", data);
-    return data.message;
-  } catch (error) {
-    console.error("Error in postNote:", error);
-    throw error; // Re-throw so submit() can catch it
+    const jsonData = await sageData.json()
+    return jsonData
   }
-}
-  
+
+  async function postNote(note) {
+    try {
+      const session = await fetchAuthSession();
+      const idToken = session.tokens?.idToken?.toString();
+
+      const response = await fetch(POST_URL, {
+        method: "POST",
+        headers: {
+          Authorization: idToken,
+          username: userName,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(note),
+      });
+
+      if (!response.ok) {
+        const text = await response.text();
+        console.error("POST failed:", response.status, text);
+        throw new Error(`POST failed: ${response.status} ${text}`);
+      }
+
+      const data = await response.json();
+      return data.message;
+    } catch (error) {
+      console.error("Error in postNote:", error);
+      throw error;
+    }
+  }
 
   async function picture() {
     const photo = await ref.current?.takePictureAsync();
 
     const resized = await ImageManipulator.manipulateAsync(
       photo.uri,
-      [{ resize: { width: 1200 } }], // auto-scale height
+      [{ resize: { width: 1200 } }],
       {
         compress: 0.8,
         format: ImageManipulator.SaveFormat.JPEG,
@@ -151,483 +139,560 @@ async function postNote(note) {
 
     setUriPhoto(resized.uri);
     setPreviewPicture(true);
-}
+  }
 
-
-
-  function closeModal (){
-    setTextModal(false)  
+  function closeModal() {
+    setTextModal(false)
     returnToCam()
   }
 
-
   async function savePic() {
-      setTextModal(true)
-      const response = await fetch(uriPhoto);
-      const blob = await response.blob();
-      const data = await getPlantsAreas()
-      const areaMap = new Map();
+    setTextModal(true)
+    const response = await fetch(uriPhoto);
+    const blob = await response.blob();
+    const data = await getPlantsAreas()
+    const areaMap = new Map();
 
-      data.forEach(item => {
-        if (!item?.name) return;
+    data.forEach(item => {
+      if (!item?.name) return;
 
-        if (!areaMap.has(item.name)) {
-          areaMap.set(item.name, new Set());
+      if (!areaMap.has(item.name)) {
+        areaMap.set(item.name, new Set());
+      }
+
+      const plantSet = areaMap.get(item.name);
+
+      (item.plants ?? []).forEach(plant => {
+        if (plant?.name) {
+          plantSet.add(plant.name);
         }
-
-        const plantSet = areaMap.get(item.name);
-
-        (item.plants ?? []).forEach(plant => {
-          if (plant?.name) {
-            plantSet.add(plant.name);
-          }
-        });
       });
+    });
 
-      const areaNames = Array.from(areaMap.entries()).map(
-        ([name, plantSet]) => ({
-          name,
-          plants: Array.from(plantSet),
-        })
-      );
+    const areaNames = Array.from(areaMap.entries()).map(
+      ([name, plantSet]) => ({
+        name,
+        plants: Array.from(plantSet),
+      })
+    );
 
-      setAPIData(areaNames)
-      setBlob(blob)
-}
+    setAPIData(areaNames)
+    setBlob(blob)
+  }
 
-async function submit() {
+  async function submit() {
+  // Re-fetch userName at submit time to guard against the state not yet
+  // being populated when the component first mounted.
+  const currentUser = await getCurrentUser();
+  const resolvedUserName = currentUser.username || userName;
+
   const note_id = uuid.v4();
-  const uniqueName = uuid.v4()
-  const today = date.toISOString().split("T")[0]
-  const path = `public/${userName}/journal/${today}/${uniqueName}.png`    
+  const today = date.toISOString().split("T")[0];
+
+  // Embed note_id in the filename so we can match it from the DB later
+  const filename = `${note_id}_capture.jpg`;
+  const path = `public/${resolvedUserName}/journal/${today}/${filename}`;
+
   if (!areaName || areaName === " ") {
     alert("Please select an area");
     return;
   }
-  await uploadData({
-      path: path,
-      data: bloB,
-  });
-      
+
+  await uploadData({ path, data: bloB });
+
   const obj = {
-    "username": userName,
+    "username": resolvedUserName,
     "note_id": note_id,
     "note_text": text,
     "date": today,
     "area_id": areaName,
     "plant_id": plantName,
-    "tags": ["tag1","tag2"],
-    "photos": [
-      { "s3_key": path, "name": uniqueName, "comment": "Not added" }]
-      
-    }
-    console.log(obj)
-    let response = await postNote(obj)
-    console.log(response)
-    closeModal()
-    router.push("/Home");
-  }
+    "tags": ["tag1", "tag2"],
+    "photos": [{ "s3_key": path, "name": filename, "comment": "Not added" }]
+  };
+  console.log(obj)
+  let response = await postNote(obj);
+  console.log(response);
+  closeModal();
+  router.push("/Home");
+}
 
 
   if (!permission) {
     return <View />;
   }
 
-
   if (!permission.granted) {
     return (
-      <View style={styles.textContainerT}>
-        <Text>Please allow camera permissions in settings</Text>
-        <TouchableOpacity onPress={requestPermission} style={styles.otherButton}>
-          <Text style={{ color: 'white' }}>Allow Permission</Text>
+      <View style={styles.permissionContainer}>
+        <Ionicons name="camera-outline" size={48} color="#81c784" />
+        <Text style={styles.permissionTitle}>Camera Access Needed</Text>
+        <Text style={styles.permissionSub}>Please allow camera permissions to document your garden</Text>
+        <TouchableOpacity onPress={requestPermission} style={styles.permissionButton}>
+          <Text style={styles.permissionButtonText}>Allow Permission</Text>
         </TouchableOpacity>
       </View>
     );
   }
-
 
   if (!previewPicture) {
-      return (
-        <View style={styles.highObject}>
-          <CameraView style={StyleSheet.absoluteFillObject} facing={facing} ref={ref}></CameraView>
-          <View style={styles.buttonRow}>
-        <TouchableOpacity style={styles.flipButton} onPress={changeSide}>
-          <Ionicons name="camera-reverse" size={28} color="white" />
-        </TouchableOpacity>
-        <TouchableOpacity style={styles.shutterButton} onPress={picture}>
-          <View style={styles.shutterInnerCircle} />
-        </TouchableOpacity>
-      </View>
+    return (
+      <View style={styles.highObject}>
+        <CameraView style={StyleSheet.absoluteFillObject} facing={facing} ref={ref} />
+
+        {/* Top label */}
+        <View style={styles.cameraTopBar}>
+          <Text style={styles.cameraEyebrow}>CAPTURE</Text>
+        </View>
+
+        <View style={styles.shutterRow}>
+          <TouchableOpacity style={styles.flipButton} onPress={changeSide}>
+            <Ionicons name="camera-reverse" size={26} color="white" />
+          </TouchableOpacity>
+
+          <TouchableOpacity style={styles.shutterButton} onPress={picture}>
+            <View style={styles.shutterInnerCircle} />
+          </TouchableOpacity>
+
+          {/* Placeholder to balance the row */}
+          <View style={{ width: 50 }} />
+        </View>
       </View>
     );
   }
-  else {
-    return (
-      <View style={styles.highObject}>
-           <Modal
-            animationType="slide"
-            transparent={true}
-            visible={textModal}
-          >
-            <View style={styles.modalBackground}>
-              <View style={styles.modalContainer}>
-                <Text style={styles.modalTitle}>You can save any notes along with your photo here!</Text>
-               
-                <TextInput
-                  style={styles.inputStyles}
-                  onChangeText={setText}
-                  value={text}
-                  placeholder="Nearly 40 pounds of beets!"
-                  placeholderTextColor="#999"
-                />
 
-                <TouchableOpacity
-                  style={styles.datePickerButton}
-                  onPress={() => setOpenDate(true)}
-                >
-                  <Ionicons name="calendar-outline" size={20} color="#28a745" />
-                  <Text style={styles.datePickerText}>
-                    Date: {date.toLocaleDateString()}
-                  </Text>
-                </TouchableOpacity>
+  return (
+    <View style={styles.highObject}>
+      <Modal
+        animationType="slide"
+        transparent={true}
+        visible={textModal}
+      >
+        {/* Tapping the dim backdrop dismisses the keyboard */}
+        <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
+          <View style={styles.modalBackdrop} />
+        </TouchableWithoutFeedback>
 
-                <DatePickerModal
-                  locale="en"
-                  mode="single"
-                  visible={openDate}
-                  date={date}
-                  onDismiss={() => setOpenDate(false)}
-                  onConfirm={({ date }) => {
-                    setOpenDate(false);
-                    setDate(date);
-                  }}
-                />
+        {/* Sheet slides up above the keyboard */}
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          style={styles.modalSheetWrapper}
+          pointerEvents="box-none"
+        >
+          <View style={styles.modalContainer}>
 
-                <View style={styles.pickerContainer}>
+            {/* Header */}
+            <Text style={styles.modalEyebrow}>NEW ENTRY</Text>
+            <Text style={styles.modalTitle}>Add a note to{"\n"}your observation</Text>
 
+            <View style={styles.divider} />
 
-                    <DropDownPicker
-                      open={areaOpen}
-                      value={areaName}
-                      items={areaItems}
-                      setOpen={setAreaOpen}
-                      setValue={(callback) => {
-                        const value = callback(areaName);
+            {/* Note input */}
+            <Text style={styles.fieldLabel}>NOTES</Text>
+            <TextInput
+              style={styles.inputStyles}
+              onChangeText={setText}
+              value={text}
+              placeholder="Nearly 40 pounds of beets!"
+              placeholderTextColor="#a2aca4"
+              multiline
+            />
 
-                        setAreaName(value);
-                        setPlantName(null);
-                      }}
-                      placeholder="Select an area"
-                      disabled={areaItems.length === 0}
-                      style={styles.picker}
-                      zIndex={3000}
-                      zIndexInverse={1000}
-                    />
-                  </View>
+            {/* Date picker */}
+            <Text style={styles.fieldLabel}>DATE</Text>
+            <TouchableOpacity
+              style={styles.datePickerButton}
+              onPress={() => { Keyboard.dismiss(); setOpenDate(true); }}
+            >
+              <Ionicons name="calendar-outline" size={16} color="#5a8a5e" />
+              <Text style={styles.datePickerText}>
+                {date.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}
+              </Text>
+            </TouchableOpacity>
 
+            <DatePickerModal
+              locale="en"
+              mode="single"
+              visible={openDate}
+              date={date}
+              onDismiss={() => setOpenDate(false)}
+              onConfirm={({ date }) => {
+                setOpenDate(false);
+                setDate(date);
+              }}
+            />
 
-                {selectedArea?.plants?.length > 0 && (
-                  <View style={styles.pickerContainer}>
-                    <Text style={styles.pickerLabel}>Plant (Optional)</Text>
-
-                    <DropDownPicker
-                      open={plantOpen}
-                      value={plantName}
-                      items={plantItems}
-                      setOpen={setPlantOpen}
-                      setValue={setPlantName}
-                      placeholder="Select a plant"
-                      style={styles.picker}
-                      dropDownContainerStyle={styles.dropdown}
-                      zIndex={2000}
-                      zIndexInverse={2000}
-                    />
-                  </View>
-                )}
-
-
-                <View style={styles.buttonRowAgain}>
-                <TouchableOpacity style={styles.greenButton2} onPress={closeModal}>
-                  <Ionicons name="arrow-back-outline" size={28} color="white" />
-                  <Text style={styles.buttonText}>Cancel</Text>
-                </TouchableOpacity>
-                <TouchableOpacity style={styles.greenButton2} onPress={submit}>
-                  <Ionicons name="arrow-forward-outline" size={28} color="white" />
-                  <Text style={styles.buttonText}>Confirm</Text>
-                </TouchableOpacity>
-                </View>
-              </View>
+            {/* Area picker */}
+            <Text style={styles.fieldLabel}>AREA</Text>
+            <View style={[styles.pickerContainer, { zIndex: 3000 }]}>
+              <DropDownPicker
+                open={areaOpen}
+                value={areaName}
+                items={areaItems}
+                setOpen={(val) => { Keyboard.dismiss(); setAreaOpen(val); }}
+                setValue={(callback) => {
+                  const value = callback(areaName);
+                  setAreaName(value);
+                  setPlantName(null);
+                }}
+                placeholder="Select an area"
+                disabled={areaItems.length === 0}
+                style={styles.picker}
+                dropDownContainerStyle={styles.dropdown}
+                textStyle={styles.pickerText}
+                placeholderStyle={styles.pickerPlaceholder}
+                zIndex={3000}
+                zIndexInverse={1000}
+              />
             </View>
-          </Modal>
-          <Image source={{ uri: uriPhoto }} style={StyleSheet.absoluteFillObject} />
-          <View style={styles.bigButtonRow}>
-            <TouchableOpacity style={styles.saveButton1} onPress={returnToCam}>
-              <Text style={styles.saveButtonText}>Redo</Text>
-              <Ionicons name="arrow-back-outline" size={20} color="white" />
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.saveButton2} onPress={savePic}>
-              <Text style={styles.saveButtonText}>Save</Text>
-              <Ionicons name="arrow-forward" size={20} color="white" />
-            </TouchableOpacity>
+
+            {/* Plant picker */}
+            {selectedArea?.plants?.length > 0 && (
+              <View style={[styles.pickerContainer, { zIndex: 2000 }]}>
+                <Text style={styles.fieldLabel}>PLANT <Text style={styles.optionalTag}>(optional)</Text></Text>
+                <DropDownPicker
+                  open={plantOpen}
+                  value={plantName}
+                  items={plantItems}
+                  setOpen={(val) => { Keyboard.dismiss(); setPlantOpen(val); }}
+                  setValue={setPlantName}
+                  placeholder="Select a plant"
+                  style={styles.picker}
+                  dropDownContainerStyle={styles.dropdown}
+                  textStyle={styles.pickerText}
+                  placeholderStyle={styles.pickerPlaceholder}
+                  zIndex={2000}
+                  zIndexInverse={2000}
+                  dropDownDirection="BOTTOM"
+                />
+              </View>
+            )}
+
+            {/* Action buttons */}
+            <View style={styles.buttonRowAgain}>
+              <TouchableOpacity style={styles.cancelButton} onPress={closeModal}>
+                <Ionicons name="close-outline" size={18} color="#656e5f" />
+                <Text style={styles.cancelButtonText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.confirmButton} onPress={submit}>
+                <Text style={styles.confirmButtonText}>Save Entry</Text>
+                <Ionicons name="arrow-forward-outline" size={18} color="#d0d7cc" />
+              </TouchableOpacity>
+            </View>
+
           </View>
+        </KeyboardAvoidingView>
+      </Modal>
+
+      {/* Photo preview */}
+      <Image source={{ uri: uriPhoto }} style={StyleSheet.absoluteFillObject} />
+
+      {/* Preview label */}
+      <View style={styles.previewTopBar}>
+        <Text style={styles.cameraEyebrow}>PREVIEW</Text>
+      </View>
+
+      <View style={styles.bigButtonRow}>
+        <TouchableOpacity style={styles.redoButton} onPress={returnToCam}>
+          <Ionicons name="arrow-back-outline" size={18} color="#d0d7cc" />
+          <Text style={styles.saveButtonText}>Redo</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={styles.saveButton} onPress={savePic}>
+          <Text style={styles.saveButtonText}>Use Photo</Text>
+          <Ionicons name="arrow-forward" size={18} color="#d0d7cc" />
+        </TouchableOpacity>
+      </View>
     </View>
-    )
-  }
+  )
 }
 
 
 const styles = StyleSheet.create({
-      buttonRow: {
-      flexDirection: 'row',
-      justifyContent: 'center',
-      marginTop: 20,
-},
-      bigButtonRow: {
-      flexDirection: 'row',
-      justifyContent: 'center',
-      marginTop: 20,
-      gap: 80
-      },
-tealButton: {
-      backgroundColor: 'teal',
-      padding: 12,
-      borderRadius: 8,
-      marginHorizontal: 10,
-},
-  greenButton: {
-      backgroundColor: 'green',
-      padding: 12,
-      borderRadius: 8,
-      marginHorizontal: 10,
-  },
-  grayButton: {
-      backgroundColor: 'black',
-      padding: 12,
-      borderRadius: 8,
-      marginHorizontal: 10,
-  },
-  headerImage: {
-        color: '#808080',
-        bottom: -90,
-        left: -35,
-        position: 'absolute',
-  },
-  titleContainer: {
-        justifyContent: 'flex-end',
-  },
-  camera: {
-    height: "100%",
-    width: "100%"
-  },
-  buttonC: {
-    backgroundColor: 'teal',
-    padding: 12,
-    borderRadius: 8,
-    alignSelf: 'center',
-    margin: 25,
-  },
-  textContainerT: {
+
+  highObject: {
     flex: 1,
+    backgroundColor: '#1a1a1a',
+  },
+
+  // ─── Permission screen ────────────────────────────────────────────────────
+  permissionContainer: {
+    flex: 1,
+    backgroundColor: '#d0d7c9',
     justifyContent: 'center',
     alignItems: 'center',
-    paddingHorizontal: 20,
-    paddingBottom: 0,
-    marginBottom: 0
-
-
+    paddingHorizontal: 32,
+    gap: 16,
   },
-  otherButton: {
-    backgroundColor: 'teal',
-    paddingVertical: 10,
-    paddingHorizontal: 18,
-    borderRadius: 6,
+  permissionTitle: {
+    fontSize: 22,
+    fontFamily: 'Poppins_700Bold',
+    color: '#323232',
+    textAlign: 'center',
+  },
+  permissionSub: {
+    fontSize: 14,
+    color: '#656e5f',
+    fontFamily: 'Poppins_400Regular',
+    textAlign: 'center',
+    lineHeight: 22,
+  },
+  permissionButton: {
+    marginTop: 8,
+    backgroundColor: '#514942',
+    paddingVertical: 14,
+    paddingHorizontal: 32,
+    borderRadius: 14,
+  },
+  permissionButtonText: {
+    color: '#d0d7cc',
+    fontSize: 14,
+    fontFamily: 'Poppins_600SemiBold',
+    letterSpacing: 1,
+  },
+
+  // ─── Camera screen ────────────────────────────────────────────────────────
+  cameraTopBar: {
     position: 'absolute',
-    bottom: 40,
-    marginHorizontal: 'auto',
- 
-       
+    top: 56,
+    left: 0,
+    right: 0,
+    alignItems: 'center',
   },
-  pictureButton: {
-    backgroundColor: 'green',
-    padding: 12,
-    borderRadius: 8,
-    margin: 25,
- 
-       
+  cameraEyebrow: {
+    color: '#81c784',
+    fontSize: 11,
+    fontFamily: 'Poppins_600SemiBold',
+    letterSpacing: 3,
   },
-  previewStyles: {
+  shutterRow: {
+    position: 'absolute',
+    bottom: 56,
+    left: 0,
+    right: 0,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 40,
+    gap: 40,
+  },
+  shutterButton: {
+    width: 76,
+    height: 76,
+    borderRadius: 38,
+    borderWidth: 4,
+    borderColor: 'rgba(255,255,255,0.8)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: 'rgba(255,255,255,0.15)',
+  },
+  shutterInnerCircle: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: 'white',
+  },
+  flipButton: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: 'rgba(101, 110, 95, 0.7)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+
+  // ─── Preview screen ───────────────────────────────────────────────────────
+  previewTopBar: {
+    position: 'absolute',
+    top: 56,
+    left: 0,
+    right: 0,
+    alignItems: 'center',
+  },
+  bigButtonRow: {
+    position: 'absolute',
+    bottom: 52,
+    left: 0,
+    right: 0,
     flexDirection: 'row',
     justifyContent: 'center',
-    gap: 100
+    gap: 16,
+    paddingHorizontal: 32,
   },
-    modalBackground: {
+  redoButton: {
     flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
-    justifyContent: 'center',
+    flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    backgroundColor: 'rgba(50, 50, 50, 0.85)',
+    paddingVertical: 15,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: '#656e5f',
+  },
+  saveButton: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    backgroundColor: '#514942',
+    paddingVertical: 15,
+    borderRadius: 14,
+  },
+  saveButtonText: {
+    color: '#d0d7cc',
+    fontSize: 15,
+    fontFamily: 'Poppins_600SemiBold',
+    letterSpacing: 0.4,
+  },
+
+ 
+  modalBackdrop: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0, 0, 0, 0.35)',
+  },
+  // Sheet wrapper sits at the bottom, pushed up by KeyboardAvoidingView
+  modalSheetWrapper: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
   },
   modalContainer: {
-    width: '85%',
-    backgroundColor: 'white',
-    borderRadius: 20,
-    padding: 20,
-    alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 4,
-    },
-    shadowOpacity: 0.3,
-    shadowRadius: 5,
-    elevation: 10,
+    backgroundColor: '#f5f7f3',
+    borderTopLeftRadius: 28,
+    borderTopRightRadius: 28,
+    padding: 28,
+    paddingBottom: 52,
+  },
+  modalEyebrow: {
+    color: '#5a8a5e',
+    fontSize: 10,
+    fontFamily: 'Poppins_600SemiBold',
+    letterSpacing: 3,
+    marginBottom: 6,
   },
   modalTitle: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    marginBottom: 15,
-    textAlign: 'center',
+    fontSize: 24,
+    fontFamily: 'Poppins_700Bold',
+    color: '#323232',
+    lineHeight: 32,
+    marginBottom: 20,
+  },
+  divider: {
+    height: 1,
+    backgroundColor: '#a2aca4',
+    opacity: 0.5,
+    marginBottom: 20,
+  },
+  fieldLabel: {
+    color: '#5a8a5e',
+    fontSize: 10,
+    fontFamily: 'Poppins_600SemiBold',
+    letterSpacing: 2,
+    marginBottom: 8,
+  },
+  optionalTag: {
+    color: '#a2aca4',
+    fontFamily: 'Poppins_400Regular',
+    letterSpacing: 1,
   },
   inputStyles: {
     width: '100%',
-    height: 40,
-    borderColor: '#ccc',
+    minHeight: 48,
+    borderColor: '#c8d0c4',
     borderWidth: 1,
-    borderRadius: 10,
-    paddingHorizontal: 10,
-    marginBottom: 20,
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    marginBottom: 18,
+    color: '#323232',
+    backgroundColor: '#ffffff',
+    fontSize: 14,
+    fontFamily: 'Poppins_400Regular',
+    lineHeight: 20,
   },
   datePickerButton: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
+    gap: 10,
     width: '100%',
-    paddingVertical: 12,
-    paddingHorizontal: 15,
-    borderRadius: 10,
+    paddingVertical: 14,
+    paddingHorizontal: 14,
+    borderRadius: 12,
     borderWidth: 1,
-    borderColor: '#ccc',
-    backgroundColor: '#f9f9f9',
-    marginBottom: 20,
-    gap: 8,
+    borderColor: '#c8d0c4',
+    backgroundColor: '#ffffff',
+    marginBottom: 18,
   },
   datePickerText: {
-    color: '#333',
+    color: '#323232',
     fontSize: 14,
-    fontWeight: '500',
+    fontFamily: 'Poppins_400Regular',
   },
   pickerContainer: {
     width: '100%',
-    marginBottom: 15,
-  },
-  pickerLabel: {
-    color: '#333',
-    fontSize: 14,
-    fontWeight: '600',
-    marginBottom: 8,
-  },
-  pickerWrapper: {
-    borderWidth: 1,
-    borderColor: 'green',
-    borderRadius: 10,
-    height: 50,
-
-    
+    marginBottom: 14,
   },
   picker: {
-    width: '100%',
-    height: 50,
+    backgroundColor: '#ffffff',
+    borderColor: '#c8d0c4',
+    borderRadius: 12,
+    minHeight: 48,
   },
-  greenButton2: {
-    backgroundColor: 'green',
-    paddingVertical: 10,
-    paddingHorizontal: 10,
-    borderRadius: 10,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    marginTop: 10,
+  dropdown: {
+    backgroundColor: '#ffffff',
+    borderColor: '#c8d0c4',
+    borderRadius: 12,
+  },
+  pickerText: {
+    color: '#323232',
+    fontSize: 14,
+    fontFamily: 'Poppins_400Regular',
+  },
+  pickerPlaceholder: {
+    color: '#a2aca4',
+    fontSize: 14,
+    fontFamily: 'Poppins_400Regular',
   },
   buttonRowAgain: {
-  flexDirection: 'row',
-  justifyContent: 'space-between',
-  marginTop: 10,
-  gap: 40
-},
-  buttonText: {
-    color: 'white',
-    fontWeight: '600',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginTop: 20,
+    gap: 12,
   },
-  shutterButton: {
-    position: 'absolute',
-    width: 80,
-    height: 80,
-    borderRadius: 40,
-    borderWidth: 5,
-    borderColor: 'white',
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: '#eee',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.2,
-    shadowRadius: 5,
-    elevation: 5,
-    top: 485
-  },
-  shutterInnerCircle: {
-    position: 'absolute',
-    width: 60,
-    height: 60,
-    borderRadius: 30,
-    backgroundColor: "white",
-  },
-  flipButton: {
-    position: 'absolute',
-    top: 502,
-    left: 45,
-    width: 50,
-    height: 50,
-    borderRadius: 25,
-    backgroundColor: 'rgba(53, 179, 28, 0.6)',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  highObject: {
-    height: "100%"
-  },
-  saveButton1: {
-    position: "absolute",
-    top: 480,
-    left: 50,
+  cancelButton: {
+    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#28a745',
-    paddingVertical: 12,
-    paddingHorizontal: 24,
-    borderRadius: 25,
-    alignSelf: 'center',
-    marginTop: 20,
-    gap: 8,
+    gap: 6,
+    paddingVertical: 14,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#c8d0c4',
+    backgroundColor: '#eaede7',
   },
-  saveButton2: {
-    position: "absolute",
-    top: 480,
-    right: 50,
+  cancelButtonText: {
+    color: '#656e5f',
+    fontFamily: 'Poppins_600SemiBold',
+    fontSize: 14,
+  },
+  confirmButton: {
+    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#28a745',
-    paddingVertical: 12,
-    paddingHorizontal: 24,
-    borderRadius: 25,
-    alignSelf: 'center',
-    marginTop: 20,
     gap: 8,
+    paddingVertical: 14,
+    borderRadius: 12,
+    backgroundColor: '#514942',
   },
-  saveButtonText: {
-    color: 'white',
-    fontSize: 16,
-    fontWeight: '600',
+  confirmButtonText: {
+    color: '#d0d7cc',
+    fontFamily: 'Poppins_700Bold',
+    fontSize: 14,
+    letterSpacing: 0.5,
   },
 });
