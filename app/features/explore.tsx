@@ -8,7 +8,6 @@ import { useEffect, useRef, useState } from 'react';
 import { Image, Keyboard, KeyboardAvoidingView, Linking, Modal, Platform, StyleSheet, Text, TextInput, TouchableOpacity, TouchableWithoutFeedback, View } from 'react-native';
 import DropDownPicker from 'react-native-dropdown-picker';
 import { DatePickerModal } from 'react-native-paper-dates';
-import uuid from 'react-native-uuid';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 
 
@@ -117,10 +116,37 @@ export default function TabTwoScreen() {
         throw new Error(`POST failed: ${response.status} ${text}`);
       }
 
-      const data = await response.json();
-      return data.message;
+      return await response.json();
     } catch (error) {
       console.error("Error in postNote:", error);
+      throw error;
+    }
+  }
+
+  async function putNote(note) {
+    try {
+      const session = await fetchAuthSession();
+      const idToken = session.tokens?.idToken?.toString();
+
+      const response = await fetch(POST_URL, {
+        method: "PUT",
+        headers: {
+          Authorization: idToken,
+          username: userName,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(note),
+      });
+
+      if (!response.ok) {
+        const text = await response.text();
+        console.error("PUT failed:", response.status, text);
+        throw new Error(`PUT failed: ${response.status} ${text}`);
+      }
+
+      return await response.json();
+    } catch (error) {
+      console.error("Error in putNote:", error);
       throw error;
     }
   }
@@ -186,33 +212,37 @@ export default function TabTwoScreen() {
   const currentUser = await getCurrentUser();
   const resolvedUserName = currentUser.username || userName;
 
-  const note_id = uuid.v4();
   const today = date.toISOString().split("T")[0];
-
-  // Embed note_id in the filename so we can match it from the DB later
-  const filename = `${note_id}_capture.jpg`;
-  const path = `public/${resolvedUserName}/journal/${today}/${filename}`;
 
   if (!areaName || areaName === " ") {
     alert("Please select an area");
     return;
   }
 
-  await uploadData({ path, data: bloB });
-
-  const obj = {
+  // Create the note first — the backend assigns its own note_id, so we
+  // can't know the real id (and therefore the S3 path) until this returns.
+  const createObj = {
     "username": resolvedUserName,
-    "note_id": note_id,
     "note_text": text,
     "date": today,
     "area_id": areaName,
     "plant_id": plantName,
     "tags": ["tag1", "tag2"],
-    "photos": [{ "s3_key": path, "name": filename, "comment": "Not added" }]
   };
-  console.log(obj)
-  let response = await postNote(obj);
-  console.log(response);
+  const created = await postNote(createObj);
+  const note_id = created.note_id;
+
+  const filename = `${note_id}_capture.jpg`;
+  const path = `public/${resolvedUserName}/journal/${today}/${filename}`;
+  await uploadData({ path, data: bloB });
+
+  await putNote({
+    username: resolvedUserName,
+    note_id,
+    date: today,
+    photos: [{ s3_key: path, comment: "" }],
+  });
+
   closeModal();
   router.push("/Home");
 }

@@ -21,7 +21,7 @@ registerTranslation('en', {
 
 Amplify.configure({ ...awsconfig });
 
-const sageLogo = require('/Users/davidschauder/sagetest/assets/images/img.png');
+const sageLogo = require('../../assets/images/img.png');
 
 export default function TabLayout() {
   const [authenticated, setAuthenticated] = useState(false);

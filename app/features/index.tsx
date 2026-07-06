@@ -10,8 +10,8 @@ import {
   View
 } from "react-native";
 
-const gardenImage = require('/Users/davidschauder/sagetest/assets/images/journal_img.jpg');
-const sageLogo = require('/Users/davidschauder/sagetest/assets/images/img.png');
+const gardenImage = require('../../assets/images/journal_img.jpg');
+const sageLogo = require('../../assets/images/img.png');
 
 export default function HomeScreen() {
   const router = useRouter();
