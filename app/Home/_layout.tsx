@@ -1,7 +1,7 @@
 import { Poppins_400Regular, Poppins_600SemiBold, Poppins_700Bold, useFonts } from "@expo-google-fonts/poppins";
 import { Amplify } from "aws-amplify";
 import { getCurrentUser, signIn, signOut } from "aws-amplify/auth";
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Image, StatusBar, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { registerTranslation } from 'react-native-paper-dates';
 import HomeScreen from '../features';
@@ -43,7 +43,9 @@ export default function TabLayout() {
       console.log("User is not yet signed in");
     }
   }
-  verifyUserNotSignIn();
+  useEffect(() => {
+    verifyUserNotSignIn();
+  }, []);
 
   async function signOutUser() {
     try { signOut(); } catch (error) { console.log(error); }

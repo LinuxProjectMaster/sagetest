@@ -25,8 +25,9 @@ export default function RootLayout() {
       <Stack initialRouteName="Home" >
         <Stack.Screen name="Home" options={{ headerShown: false }} />
         <Stack.Screen name="+not-found" />
-        <Stack.Screen name="features/journal" options={{ title: "Journal" }}/>
-        <Stack.Screen name="features/explore" options={{ title: "Upload Photo" }}/>
+        <Stack.Screen name="features/journal" options={{ headerShown: false }}/>
+        <Stack.Screen name="features/explore" options={{ headerShown: false }}/>
+        <Stack.Screen name="features/log-harvest" options={{ headerShown: false }}/>
       </Stack>
       <StatusBar style="auto" />
     </ThemeProvider>

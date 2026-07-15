@@ -80,6 +80,16 @@ export default function HomeScreen() {
                 </View>
               </TouchableOpacity>
             </Link>
+
+            <Link href={"/features/log-harvest"} asChild>
+              <TouchableOpacity style={styles.secondaryButton} activeOpacity={0.85}>
+                <Text style={styles.secondaryButtonIcon}>🧺</Text>
+                <View>
+                  <Text style={styles.secondaryButtonLabel}>LOG HARVEST</Text>
+                  <Text style={styles.secondaryButtonSub}>Track what you pick</Text>
+                </View>
+              </TouchableOpacity>
+            </Link>
           </View>
         </View>
     </View>

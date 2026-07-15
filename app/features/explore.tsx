@@ -5,7 +5,7 @@ import { CameraType, CameraView, useCameraPermissions } from 'expo-camera';
 import * as ImageManipulator from 'expo-image-manipulator';
 import { useRouter } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
-import { Image, Keyboard, KeyboardAvoidingView, Linking, Modal, Platform, StyleSheet, Text, TextInput, TouchableOpacity, TouchableWithoutFeedback, View } from 'react-native';
+import { Image, Keyboard, KeyboardAvoidingView, Linking, Modal, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, TouchableWithoutFeedback, View } from 'react-native';
 import DropDownPicker from 'react-native-dropdown-picker';
 import { DatePickerModal } from 'react-native-paper-dates';
 import Ionicons from 'react-native-vector-icons/Ionicons';
@@ -40,7 +40,7 @@ export default function TabTwoScreen() {
   const ref = useRef(null);
   const [previewPicture, setPreviewPicture] = useState(false)
   const [uriPhoto, setUriPhoto] = useState("")
-  const [bloB, setBlob] = useState(new Blob())
+  const [queuedPhotos, setQueuedPhotos] = useState<{ uri: string; blob: Blob }[]>([])
   const [areaName, setAreaName] = useState(" ")
   const [plantName, setPlantName] = useState(" ")
   const [areaOpen, setAreaOpen] = useState(false);
@@ -169,13 +169,17 @@ export default function TabTwoScreen() {
 
   function closeModal() {
     setTextModal(false)
+    setQueuedPhotos([])
     returnToCam()
   }
 
-  async function savePic() {
+  async function fetchBlob(uri) {
+    const response = await fetch(uri);
+    return await response.blob();
+  }
+
+  async function openNoteDetails() {
     setTextModal(true)
-    const response = await fetch(uriPhoto);
-    const blob = await response.blob();
     const data = await getPlantsAreas()
     const areaMap = new Map();
 
@@ -203,7 +207,22 @@ export default function TabTwoScreen() {
     );
 
     setAPIData(areaNames)
-    setBlob(blob)
+  }
+
+  async function addAnotherPhoto() {
+    const blob = await fetchBlob(uriPhoto);
+    setQueuedPhotos(prev => [...prev, { uri: uriPhoto, blob }]);
+    setPreviewPicture(false);
+  }
+
+  async function savePic() {
+    const blob = await fetchBlob(uriPhoto);
+    setQueuedPhotos(prev => [...prev, { uri: uriPhoto, blob }]);
+    await openNoteDetails();
+  }
+
+  function removeQueuedPhoto(index) {
+    setQueuedPhotos(prev => prev.filter((_, i) => i !== index));
   }
 
   async function submit() {
@@ -219,8 +238,13 @@ export default function TabTwoScreen() {
     return;
   }
 
+  if (queuedPhotos.length === 0) {
+    alert("Please add at least one photo");
+    return;
+  }
+
   // Create the note first — the backend assigns its own note_id, so we
-  // can't know the real id (and therefore the S3 path) until this returns.
+  // can't know the real id (and therefore the S3 paths) until this returns.
   const createObj = {
     "username": resolvedUserName,
     "note_text": text,
@@ -232,15 +256,19 @@ export default function TabTwoScreen() {
   const created = await postNote(createObj);
   const note_id = created.note_id;
 
-  const filename = `${note_id}_capture.jpg`;
-  const path = `public/${resolvedUserName}/journal/${today}/${filename}`;
-  await uploadData({ path, data: bloB });
+  const uploadedPhotos = [];
+  for (let i = 0; i < queuedPhotos.length; i++) {
+    const filename = `${note_id}_${i}_capture.jpg`;
+    const path = `public/${resolvedUserName}/journal/${today}/${filename}`;
+    await uploadData({ path, data: queuedPhotos[i].blob });
+    uploadedPhotos.push({ s3_key: path, comment: "" });
+  }
 
   await putNote({
     username: resolvedUserName,
     note_id,
     date: today,
-    photos: [{ s3_key: path, comment: "" }],
+    photos: uploadedPhotos,
   });
 
   closeModal();
@@ -255,6 +283,9 @@ export default function TabTwoScreen() {
   if (!permission.granted) {
     return (
       <View style={styles.permissionContainer}>
+        <TouchableOpacity style={styles.backButtonLight} onPress={() => router.back()}>
+          <Ionicons name="chevron-back" size={22} color="#656e5f" />
+        </TouchableOpacity>
         <Ionicons name="camera-outline" size={48} color="#81c784" />
         <Text style={styles.permissionTitle}>Camera Access Needed</Text>
         <Text style={styles.permissionSub}>Please allow camera permissions to document your garden</Text>
@@ -269,6 +300,17 @@ export default function TabTwoScreen() {
     return (
       <View style={styles.highObject}>
         <CameraView style={StyleSheet.absoluteFillObject} facing={facing} ref={ref} />
+
+        <TouchableOpacity style={styles.backButtonCamera} onPress={() => router.back()}>
+          <Ionicons name="chevron-back" size={22} color="white" />
+        </TouchableOpacity>
+
+        {queuedPhotos.length > 0 && (
+          <TouchableOpacity style={styles.doneButtonCamera} onPress={openNoteDetails}>
+            <Text style={styles.doneButtonCameraText}>Done · {queuedPhotos.length}</Text>
+            <Ionicons name="checkmark-circle" size={18} color="white" />
+          </TouchableOpacity>
+        )}
 
         {/* Top label */}
         <View style={styles.cameraTopBar}>
@@ -316,6 +358,19 @@ export default function TabTwoScreen() {
             <Text style={styles.modalTitle}>Add a note to{"\n"}your observation</Text>
 
             <View style={styles.divider} />
+
+            {/* Queued photos */}
+            <Text style={styles.fieldLabel}>PHOTOS ({queuedPhotos.length})</Text>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.photoStrip}>
+              {queuedPhotos.map((p, index) => (
+                <View key={index} style={styles.photoThumbWrapper}>
+                  <Image source={{ uri: p.uri }} style={styles.photoThumb} />
+                  <TouchableOpacity style={styles.photoThumbRemove} onPress={() => removeQueuedPhoto(index)}>
+                    <Ionicons name="close" size={12} color="white" />
+                  </TouchableOpacity>
+                </View>
+              ))}
+            </ScrollView>
 
             {/* Note input */}
             <Text style={styles.fieldLabel}>NOTES</Text>
@@ -420,16 +475,23 @@ export default function TabTwoScreen() {
       {/* Preview label */}
       <View style={styles.previewTopBar}>
         <Text style={styles.cameraEyebrow}>PREVIEW</Text>
+        {queuedPhotos.length > 0 && (
+          <Text style={styles.previewCountText}>{queuedPhotos.length} photo{queuedPhotos.length === 1 ? "" : "s"} added already</Text>
+        )}
       </View>
 
       <View style={styles.bigButtonRow}>
         <TouchableOpacity style={styles.redoButton} onPress={returnToCam}>
-          <Ionicons name="arrow-back-outline" size={18} color="#d0d7cc" />
+          <Ionicons name="arrow-back-outline" size={16} color="#d0d7cc" />
           <Text style={styles.saveButtonText}>Redo</Text>
         </TouchableOpacity>
+        <TouchableOpacity style={styles.addAnotherButton} onPress={addAnotherPhoto}>
+          <Ionicons name="add" size={16} color="#d0d7cc" />
+          <Text style={styles.saveButtonText}>Add More</Text>
+        </TouchableOpacity>
         <TouchableOpacity style={styles.saveButton} onPress={savePic}>
-          <Text style={styles.saveButtonText}>Use Photo</Text>
-          <Ionicons name="arrow-forward" size={18} color="#d0d7cc" />
+          <Text style={styles.saveButtonText}>Continue</Text>
+          <Ionicons name="arrow-forward" size={16} color="#d0d7cc" />
         </TouchableOpacity>
       </View>
     </View>
@@ -452,6 +514,14 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: 32,
     gap: 16,
+  },
+  backButtonLight: {
+    position: 'absolute',
+    top: 56,
+    left: 20,
+    padding: 8,
+    backgroundColor: 'rgba(101,110,95,0.15)',
+    borderRadius: 20,
   },
   permissionTitle: {
     fontSize: 22,
@@ -487,6 +557,33 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     alignItems: 'center',
+  },
+  backButtonCamera: {
+    position: 'absolute',
+    top: 56,
+    left: 20,
+    padding: 8,
+    backgroundColor: 'rgba(101, 110, 95, 0.7)',
+    borderRadius: 20,
+    zIndex: 1,
+  },
+  doneButtonCamera: {
+    position: 'absolute',
+    top: 56,
+    right: 20,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingVertical: 8,
+    paddingHorizontal: 14,
+    backgroundColor: '#5a8a5e',
+    borderRadius: 20,
+    zIndex: 1,
+  },
+  doneButtonCameraText: {
+    color: 'white',
+    fontSize: 13,
+    fontFamily: 'Poppins_600SemiBold',
   },
   cameraEyebrow: {
     color: '#81c784',
@@ -537,6 +634,12 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     alignItems: 'center',
+    gap: 4,
+  },
+  previewCountText: {
+    color: 'white',
+    fontSize: 12,
+    fontFamily: 'Poppins_400Regular',
   },
   bigButtonRow: {
     position: 'absolute',
@@ -545,36 +648,46 @@ const styles = StyleSheet.create({
     right: 0,
     flexDirection: 'row',
     justifyContent: 'center',
-    gap: 16,
-    paddingHorizontal: 32,
+    gap: 10,
+    paddingHorizontal: 20,
   },
   redoButton: {
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 8,
+    gap: 6,
     backgroundColor: 'rgba(50, 50, 50, 0.85)',
     paddingVertical: 15,
     borderRadius: 14,
     borderWidth: 1,
     borderColor: '#656e5f',
   },
+  addAnotherButton: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    backgroundColor: 'rgba(90, 138, 94, 0.85)',
+    paddingVertical: 15,
+    borderRadius: 14,
+  },
   saveButton: {
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 8,
+    gap: 6,
     backgroundColor: '#514942',
     paddingVertical: 15,
     borderRadius: 14,
   },
   saveButtonText: {
     color: '#d0d7cc',
-    fontSize: 15,
+    fontSize: 13,
     fontFamily: 'Poppins_600SemiBold',
-    letterSpacing: 0.4,
+    letterSpacing: 0.2,
   },
 
  
@@ -622,6 +735,29 @@ const styles = StyleSheet.create({
     fontFamily: 'Poppins_600SemiBold',
     letterSpacing: 2,
     marginBottom: 8,
+  },
+  photoStrip: {
+    marginBottom: 18,
+  },
+  photoThumbWrapper: {
+    marginRight: 10,
+  },
+  photoThumb: {
+    width: 64,
+    height: 64,
+    borderRadius: 10,
+    backgroundColor: '#eaede7',
+  },
+  photoThumbRemove: {
+    position: 'absolute',
+    top: -6,
+    right: -6,
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    backgroundColor: '#514942',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   optionalTag: {
     color: '#a2aca4',
