@@ -1,7 +1,7 @@
 {
   "expo": {
     "name": "sagetest",
-    "slug": "sagetest",
+    "slug": "sage-observer",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
@@ -40,6 +40,19 @@
     ],
     "experiments": {
       "typedRoutes": true
-    }
+    },
+    "updates": {
+      "url": "https://u.expo.dev/e381275a-dd9c-4d48-8ca5-d510f4bdf261"
+    },
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "e381275a-dd9c-4d48-8ca5-d510f4bdf261"
+      }
+    },
+    "owner": "permaculture-gardens"
   }
 }
