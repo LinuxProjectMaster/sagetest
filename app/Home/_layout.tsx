@@ -1,6 +1,6 @@
 import { Poppins_400Regular, Poppins_600SemiBold, Poppins_700Bold, useFonts } from "@expo-google-fonts/poppins";
 import { Amplify } from "aws-amplify";
-import { getCurrentUser, signIn, signOut } from "aws-amplify/auth";
+import { getCurrentUser, signIn, signInWithRedirect, signOut } from "aws-amplify/auth";
 import React, { useEffect, useState } from 'react';
 import { Image, StatusBar, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { registerTranslation } from 'react-native-paper-dates';
@@ -22,6 +22,7 @@ registerTranslation('en', {
 Amplify.configure({ ...awsconfig });
 
 const sageLogo = require('../../assets/images/img.png');
+const googleLogo = require('../../assets/images/google-logo.jpeg');
 
 export default function TabLayout() {
   const [authenticated, setAuthenticated] = useState(false);
@@ -55,6 +56,15 @@ export default function TabLayout() {
     try {
       signOutUser();
       const user = await signIn({ username, password });
+      setAuthenticated(true);
+    } catch (error) {
+      setMessage(error.message);
+    }
+  };
+
+  const signInWithGoogle = async () => {
+    try {
+      await signInWithRedirect({ provider: 'Google' });
       setAuthenticated(true);
     } catch (error) {
       setMessage(error.message);
@@ -109,6 +119,17 @@ export default function TabLayout() {
       {/* Sign in button */}
       <TouchableOpacity style={styles.button} onPress={signInUser} activeOpacity={0.85}>
         <Text style={styles.buttonText}>Sign In</Text>
+      </TouchableOpacity>
+
+      <View style={styles.orRow}>
+        <View style={styles.orLine} />
+        <Text style={styles.orText}>OR</Text>
+        <View style={styles.orLine} />
+      </View>
+
+      <TouchableOpacity style={styles.googleButton} onPress={signInWithGoogle} activeOpacity={0.85}>
+        <Image source={googleLogo} style={styles.googleLogo} resizeMode="contain" />
+        <Text style={styles.googleButtonText}>Sign in with Google</Text>
       </TouchableOpacity>
     </View>
   );
@@ -184,5 +205,45 @@ const styles = StyleSheet.create({
     fontSize: 15,
     color: "#d0d7cc",
     letterSpacing: 0.5,
+  },
+  orRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginTop: 20,
+    marginBottom: 20,
+  },
+  orLine: {
+    flex: 1,
+    height: 1,
+    backgroundColor: "#656e5f",
+    opacity: 0.4,
+  },
+  orText: {
+    fontFamily: "Poppins_600SemiBold",
+    fontSize: 11,
+    letterSpacing: 1,
+    color: "#656e5f",
+    marginHorizontal: 12,
+  },
+  googleButton: {
+    flexDirection: "row",
+    backgroundColor: "#ffffff",
+    borderWidth: 1,
+    borderColor: "#c8d0c4",
+    paddingVertical: 16,
+    borderRadius: 12,
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 12,
+  },
+  googleLogo: {
+    width: 20,
+    height: 20,
+  },
+  googleButtonText: {
+    fontFamily: "Poppins_600SemiBold",
+    fontSize: 15,
+    color: "#323232",
+    letterSpacing: 0.3,
   },
 });

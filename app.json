@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "sagetest",
+    "name": "SAGE Observer",
     "slug": "sage-observer",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -36,7 +36,8 @@
           "backgroundColor": "#ffffff"
         }
       ],
-      "expo-font"
+      "expo-font",
+      "expo-speech-recognition"
     ],
     "experiments": {
       "typedRoutes": true
@@ -44,9 +45,7 @@
     "updates": {
       "url": "https://u.expo.dev/e381275a-dd9c-4d48-8ca5-d510f4bdf261"
     },
-    "runtimeVersion": {
-      "policy": "appVersion"
-    },
+    "runtimeVersion": "1.0.0",
     "extra": {
       "router": {},
       "eas": {

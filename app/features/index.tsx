@@ -11,7 +11,7 @@ import {
 } from "react-native";
 
 const gardenImage = require('../../assets/images/journal_img.jpg');
-const sageLogo = require('../../assets/images/img.png');
+const sageLogo = require('../../assets/images/sage-observer-logo.png');
 
 export default function HomeScreen() {
   const router = useRouter();
@@ -42,16 +42,16 @@ export default function HomeScreen() {
 
         {/* Top bar */}
         <View style={styles.topBar}>
+          <View style={styles.signOutRow}>
+            <TouchableOpacity style={styles.logoutButton} onPress={handleLogout}>
+              <Text style={styles.logoutText}>Sign Out</Text>
+            </TouchableOpacity>
+          </View>
           <Image source={sageLogo} style={styles.logo} resizeMode="contain" />
-          <TouchableOpacity style={styles.logoutButton} onPress={handleLogout}>
-            <Text style={styles.logoutText}>Sign Out</Text>
-          </TouchableOpacity>
         </View>
 
         {/* Hero content */}
         <View style={styles.heroContent}>
-          <Text style={styles.eyebrow}>YOUR GARDEN COMPANION</Text>
-          <Text style={styles.titleText}>The Sage{"\n"}Observer</Text>
           <Text style={styles.subtitleText}>
             Document, explore, and grow your botanical world
           </Text>
@@ -65,8 +65,8 @@ export default function HomeScreen() {
               <TouchableOpacity style={styles.primaryButton} activeOpacity={0.85}>
                 <Text style={styles.primaryButtonIcon}>📷</Text>
                 <View>
-                  <Text style={styles.primaryButtonLabel}>UPLOAD PHOTO</Text>
-                  <Text style={styles.primaryButtonSub}>Take pictures of your garden</Text>
+                  <Text style={styles.primaryButtonLabel}>ADD NOTE</Text>
+                  <Text style={styles.primaryButtonSub}>Take notes and photos of your garden</Text>
                 </View>
               </TouchableOpacity>
             </Link>
@@ -107,15 +107,17 @@ const styles = StyleSheet.create({
 
   // Top bar
   topBar: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
     paddingTop: 40,
     paddingHorizontal: 24,
   },
+  signOutRow: {
+    flexDirection: "row",
+    justifyContent: "flex-end",
+  },
   logo: {
-    width: 100,
-    height: 100,
+    width: 250,
+    height: 250,
+    alignSelf: "center",
   },
   logoutButton: {
     paddingVertical: 7,
@@ -138,22 +140,6 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     paddingHorizontal: 28,
     paddingTop: 20,
-  },
-  titleText: {
-    fontSize: 54,
-    fontFamily: "Poppins_400Regular",
-    color: "#656e5f",
-    lineHeight: 60,
-    letterSpacing: -0.5,
-    marginBottom: 10,
-    marginTop: 10
-  },
-  eyebrow: {
-    color: "#81c784",
-    fontSize: 11,
-    fontWeight: "400",
-    letterSpacing: 3,
-    marginBottom: 12,
   },
   subtitleText: {
     color: "#656e5f",

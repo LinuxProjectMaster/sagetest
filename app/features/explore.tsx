@@ -4,8 +4,9 @@ import { uploadData } from 'aws-amplify/storage';
 import { CameraType, CameraView, useCameraPermissions } from 'expo-camera';
 import * as ImageManipulator from 'expo-image-manipulator';
 import { useRouter } from 'expo-router';
+import { ExpoSpeechRecognitionModule, useSpeechRecognitionEvent } from 'expo-speech-recognition';
 import { useEffect, useRef, useState } from 'react';
-import { Image, Keyboard, KeyboardAvoidingView, Linking, Modal, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, TouchableWithoutFeedback, View } from 'react-native';
+import { ActivityIndicator, Image, Keyboard, KeyboardAvoidingView, Linking, Modal, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, TouchableWithoutFeedback, View } from 'react-native';
 import DropDownPicker from 'react-native-dropdown-picker';
 import { DatePickerModal } from 'react-native-paper-dates';
 import Ionicons from 'react-native-vector-icons/Ionicons';
@@ -14,6 +15,7 @@ import Ionicons from 'react-native-vector-icons/Ionicons';
 export default function TabTwoScreen() {
 
   const [userName, setUserName] = useState("")
+  const [isSubmitting, setIsSubmitting] = useState(false)
   async function getUsername() {
     const user = await getCurrentUser();
     setUserName(user.username)
@@ -40,12 +42,45 @@ export default function TabTwoScreen() {
   const ref = useRef(null);
   const [previewPicture, setPreviewPicture] = useState(false)
   const [uriPhoto, setUriPhoto] = useState("")
-  const [queuedPhotos, setQueuedPhotos] = useState<{ uri: string; blob: Blob }[]>([])
+  const [queuedPhotos, setQueuedPhotos] = useState<{ uri: string; blob: Blob; caption: string }[]>([])
+  const [currentCaption, setCurrentCaption] = useState("")
   const [areaName, setAreaName] = useState(" ")
   const [plantName, setPlantName] = useState(" ")
   const [areaOpen, setAreaOpen] = useState(false);
   const [plantOpen, setPlantOpen] = useState(false);
   const [text, setText] = useState("")
+  const [isRecognizing, setIsRecognizing] = useState(false)
+  const dictationBaseTextRef = useRef("")
+
+  useSpeechRecognitionEvent("start", () => setIsRecognizing(true));
+  useSpeechRecognitionEvent("end", () => setIsRecognizing(false));
+  useSpeechRecognitionEvent("result", (event) => {
+    const transcript = event.results[0]?.transcript ?? "";
+    const base = dictationBaseTextRef.current;
+    setText(base ? `${base} ${transcript}` : transcript);
+  });
+  useSpeechRecognitionEvent("error", (event) => {
+    console.warn("Speech recognition error:", event.error, event.message);
+    setIsRecognizing(false);
+  });
+
+  async function toggleDictation() {
+    if (isRecognizing) {
+      ExpoSpeechRecognitionModule.stop();
+      return;
+    }
+    const result = await ExpoSpeechRecognitionModule.requestPermissionsAsync();
+    if (!result.granted) {
+      alert("Microphone/speech recognition permission is required for dictation.");
+      return;
+    }
+    dictationBaseTextRef.current = text.trim();
+    ExpoSpeechRecognitionModule.start({
+      lang: "en-US",
+      interimResults: true,
+      continuous: true,
+    });
+  }
   const [apiData, setAPIData] = useState([])
   const router = useRouter();
 
@@ -78,6 +113,7 @@ export default function TabTwoScreen() {
   };
 
   const returnToCam = () => {
+    setCurrentCaption("")
     setPreviewPicture(false)
   }
 
@@ -211,13 +247,15 @@ export default function TabTwoScreen() {
 
   async function addAnotherPhoto() {
     const blob = await fetchBlob(uriPhoto);
-    setQueuedPhotos(prev => [...prev, { uri: uriPhoto, blob }]);
+    setQueuedPhotos(prev => [...prev, { uri: uriPhoto, blob, caption: currentCaption }]);
+    setCurrentCaption("");
     setPreviewPicture(false);
   }
 
   async function savePic() {
     const blob = await fetchBlob(uriPhoto);
-    setQueuedPhotos(prev => [...prev, { uri: uriPhoto, blob }]);
+    setQueuedPhotos(prev => [...prev, { uri: uriPhoto, blob, caption: currentCaption }]);
+    setCurrentCaption("");
     await openNoteDetails();
   }
 
@@ -225,7 +263,14 @@ export default function TabTwoScreen() {
     setQueuedPhotos(prev => prev.filter((_, i) => i !== index));
   }
 
+  function updateQueuedPhotoCaption(index, caption) {
+    setQueuedPhotos(prev => prev.map((p, i) => (i === index ? { ...p, caption } : p)));
+  }
+
   async function submit() {
+  if (isSubmitting) return;
+  setIsSubmitting(true);
+  try {
   // Re-fetch userName at submit time to guard against the state not yet
   // being populated when the component first mounted.
   const currentUser = await getCurrentUser();
@@ -261,7 +306,7 @@ export default function TabTwoScreen() {
     const filename = `${note_id}_${i}_capture.jpg`;
     const path = `public/${resolvedUserName}/journal/${today}/${filename}`;
     await uploadData({ path, data: queuedPhotos[i].blob });
-    uploadedPhotos.push({ s3_key: path, comment: "" });
+    uploadedPhotos.push({ s3_key: path, comment: queuedPhotos[i].caption || "" });
   }
 
   await putNote({
@@ -273,6 +318,9 @@ export default function TabTwoScreen() {
 
   closeModal();
   router.push("/Home");
+  } finally {
+    setIsSubmitting(false);
+  }
 }
 
 
@@ -368,17 +416,32 @@ export default function TabTwoScreen() {
                   <TouchableOpacity style={styles.photoThumbRemove} onPress={() => removeQueuedPhoto(index)}>
                     <Ionicons name="close" size={12} color="white" />
                   </TouchableOpacity>
+                  <TextInput
+                    style={styles.photoCaptionInput}
+                    onChangeText={(value) => updateQueuedPhotoCaption(index, value)}
+                    value={p.caption}
+                    placeholder="Caption"
+                    placeholderTextColor="#a2aca4"
+                  />
                 </View>
               ))}
             </ScrollView>
 
             {/* Note input */}
-            <Text style={styles.fieldLabel}>NOTES</Text>
+            <View style={styles.fieldLabelRow}>
+              <Text style={styles.fieldLabel}>NOTES</Text>
+              <TouchableOpacity
+                style={[styles.dictationButton, isRecognizing && styles.dictationButtonActive]}
+                onPress={toggleDictation}
+              >
+                <Ionicons name={isRecognizing ? "mic" : "mic-outline"} size={16} color={isRecognizing ? "white" : "#5a8a5e"} />
+              </TouchableOpacity>
+            </View>
             <TextInput
               style={styles.inputStyles}
               onChangeText={setText}
               value={text}
-              placeholder="Nearly 40 pounds of beets!"
+              placeholder="Add a note..."
               placeholderTextColor="#a2aca4"
               multiline
             />
@@ -459,9 +522,22 @@ export default function TabTwoScreen() {
                 <Ionicons name="close-outline" size={18} color="#656e5f" />
                 <Text style={styles.cancelButtonText}>Cancel</Text>
               </TouchableOpacity>
-              <TouchableOpacity style={styles.confirmButton} onPress={submit}>
-                <Text style={styles.confirmButtonText}>Save Entry</Text>
-                <Ionicons name="arrow-forward-outline" size={18} color="#d0d7cc" />
+              <TouchableOpacity
+                style={[styles.confirmButton, isSubmitting && styles.confirmButtonDisabled]}
+                onPress={submit}
+                disabled={isSubmitting}
+              >
+                {isSubmitting ? (
+                  <>
+                    <ActivityIndicator size="small" color="#d0d7cc" />
+                    <Text style={styles.confirmButtonText}>Saving...</Text>
+                  </>
+                ) : (
+                  <>
+                    <Text style={styles.confirmButtonText}>Save Entry</Text>
+                    <Ionicons name="arrow-forward-outline" size={18} color="#d0d7cc" />
+                  </>
+                )}
               </TouchableOpacity>
             </View>
 
@@ -480,18 +556,31 @@ export default function TabTwoScreen() {
         )}
       </View>
 
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        style={styles.previewCaptionBar}
+      >
+        <TextInput
+          style={styles.previewCaptionInput}
+          onChangeText={setCurrentCaption}
+          value={currentCaption}
+          placeholder="Add a caption for this photo"
+          placeholderTextColor="rgba(255,255,255,0.6)"
+        />
+      </KeyboardAvoidingView>
+
       <View style={styles.bigButtonRow}>
         <TouchableOpacity style={styles.redoButton} onPress={returnToCam}>
-          <Ionicons name="arrow-back-outline" size={16} color="#d0d7cc" />
-          <Text style={styles.saveButtonText}>Redo</Text>
+          <Ionicons name="arrow-back-outline" size={14} color="#d0d7cc" />
+          <Text style={styles.saveButtonText} numberOfLines={1}>Redo</Text>
         </TouchableOpacity>
         <TouchableOpacity style={styles.addAnotherButton} onPress={addAnotherPhoto}>
-          <Ionicons name="add" size={16} color="#d0d7cc" />
-          <Text style={styles.saveButtonText}>Add More</Text>
+          <Ionicons name="add" size={14} color="#d0d7cc" />
+          <Text style={styles.saveButtonText} numberOfLines={1}>Add More</Text>
         </TouchableOpacity>
         <TouchableOpacity style={styles.saveButton} onPress={savePic}>
-          <Text style={styles.saveButtonText}>Continue</Text>
-          <Ionicons name="arrow-forward" size={16} color="#d0d7cc" />
+          <Text style={styles.saveButtonText} numberOfLines={1}>Continue</Text>
+          <Ionicons name="arrow-forward" size={14} color="#d0d7cc" />
         </TouchableOpacity>
       </View>
     </View>
@@ -641,6 +730,21 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontFamily: 'Poppins_400Regular',
   },
+  previewCaptionBar: {
+    position: 'absolute',
+    bottom: 128,
+    left: 20,
+    right: 20,
+  },
+  previewCaptionInput: {
+    backgroundColor: 'rgba(0,0,0,0.45)',
+    borderRadius: 12,
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+    color: 'white',
+    fontFamily: 'Poppins_400Regular',
+    fontSize: 14,
+  },
   bigButtonRow: {
     position: 'absolute',
     bottom: 52,
@@ -652,42 +756,46 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
   },
   redoButton: {
-    flex: 1,
+    flex: 0.8,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 6,
+    gap: 4,
     backgroundColor: 'rgba(50, 50, 50, 0.85)',
     paddingVertical: 15,
+    paddingHorizontal: 4,
     borderRadius: 14,
     borderWidth: 1,
     borderColor: '#656e5f',
   },
   addAnotherButton: {
-    flex: 1,
+    flex: 0.9,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 6,
+    gap: 4,
     backgroundColor: 'rgba(90, 138, 94, 0.85)',
     paddingVertical: 15,
+    paddingHorizontal: 4,
     borderRadius: 14,
   },
   saveButton: {
-    flex: 1,
+    flex: 1.3,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 6,
+    gap: 4,
     backgroundColor: '#514942',
     paddingVertical: 15,
+    paddingHorizontal: 4,
     borderRadius: 14,
   },
   saveButtonText: {
     color: '#d0d7cc',
-    fontSize: 13,
+    fontSize: 12,
     fontFamily: 'Poppins_600SemiBold',
-    letterSpacing: 0.2,
+    letterSpacing: 0,
+    flexShrink: 1,
   },
 
  
@@ -736,17 +844,50 @@ const styles = StyleSheet.create({
     letterSpacing: 2,
     marginBottom: 8,
   },
+  fieldLabelRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  dictationButton: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: '#5a8a5e',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 8,
+  },
+  dictationButtonActive: {
+    backgroundColor: '#5a8a5e',
+    borderColor: '#5a8a5e',
+  },
   photoStrip: {
     marginBottom: 18,
   },
   photoThumbWrapper: {
     marginRight: 10,
+    width: 72,
   },
   photoThumb: {
-    width: 64,
-    height: 64,
+    width: 72,
+    height: 72,
     borderRadius: 10,
     backgroundColor: '#eaede7',
+  },
+  photoCaptionInput: {
+    marginTop: 4,
+    fontSize: 11,
+    fontFamily: 'Poppins_400Regular',
+    color: '#514942',
+    textAlign: 'center',
+    borderWidth: 1,
+    borderColor: '#d7dcd2',
+    borderRadius: 6,
+    backgroundColor: '#f4f6f1',
+    paddingVertical: 4,
+    paddingHorizontal: 4,
   },
   photoThumbRemove: {
     position: 'absolute',
@@ -854,6 +995,9 @@ const styles = StyleSheet.create({
     paddingVertical: 14,
     borderRadius: 12,
     backgroundColor: '#514942',
+  },
+  confirmButtonDisabled: {
+    opacity: 0.6,
   },
   confirmButtonText: {
     color: '#d0d7cc',
