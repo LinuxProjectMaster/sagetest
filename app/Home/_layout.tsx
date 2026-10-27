@@ -7,6 +7,7 @@ import { Image, StatusBar, StyleSheet, Text, TextInput, TouchableOpacity, View }
 import { registerTranslation } from 'react-native-paper-dates';
 import HomeScreen from '../features';
 import awsconfig from "../login/aws-exports";
+import { checkSageProfile, ProfileStatus } from "../login/authUser";
 
 registerTranslation('en', {
   save: 'Save',
@@ -30,6 +31,8 @@ export default function TabLayout() {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [message, setMessage] = useState('');
+  const [profileStatus, setProfileStatus] = useState<ProfileStatus | 'checking'>('checking');
+  const [profileUser, setProfileUser] = useState('');
 
   const [fontsLoaded] = useFonts({
     Poppins_400Regular,
@@ -49,8 +52,24 @@ export default function TabLayout() {
     verifyUserNotSignIn();
   }, []);
 
+  async function verifyProfile() {
+    setProfileStatus('checking');
+    const result = await checkSageProfile();
+    setProfileUser(result.username);
+    setProfileStatus(result.status);
+  }
+  useEffect(() => {
+    if (authenticated) verifyProfile();
+  }, [authenticated]);
+
   async function signOutUser() {
     try { signOut(); } catch (error) { console.log(error); }
+  }
+
+  async function leaveAccount() {
+    await signOut();
+    setAuthenticated(false);
+    setProfileStatus('checking');
   }
 
   const signInUser = async () => {
@@ -83,7 +102,41 @@ export default function TabLayout() {
 
   if (!fontsLoaded) return null;
 
-  if (authenticated) return <HomeScreen />;
+  if (authenticated && profileStatus === 'ok') return <HomeScreen />;
+
+  if (authenticated) {
+    return (
+      <View style={styles.container}>
+        <StatusBar barStyle="light-content" />
+        <Image source={sageLogo} style={styles.logo} resizeMode="contain"/>
+        {profileStatus === 'checking' ? (
+          <Text style={styles.subtitle}>Checking your SAGE account...</Text>
+        ) : profileStatus === 'missing' ? (
+          <>
+            <Text style={styles.subtitle}>No SAGE account found</Text>
+            <Text style={styles.gateText}>
+              {profileUser ? `We couldn't find a SAGE account for ${profileUser}. ` : ''}
+              SAGE Observer works with an existing SAGE account. Sign in with the email address you use for SAGE.
+            </Text>
+            <TouchableOpacity style={styles.button} onPress={leaveAccount} activeOpacity={0.85}>
+              <Text style={styles.buttonText}>Sign Out</Text>
+            </TouchableOpacity>
+          </>
+        ) : (
+          <>
+            <Text style={styles.subtitle}>Couldn't check your account</Text>
+            <Text style={styles.gateText}>Please check your connection and try again.</Text>
+            <TouchableOpacity style={styles.button} onPress={verifyProfile} activeOpacity={0.85}>
+              <Text style={styles.buttonText}>Try Again</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.gateLink} onPress={leaveAccount} activeOpacity={0.85}>
+              <Text style={styles.gateText}>Sign Out</Text>
+            </TouchableOpacity>
+          </>
+        )}
+      </View>
+    );
+  }
 
   return (
     <View style={styles.container}>
@@ -173,6 +226,16 @@ const styles = StyleSheet.create({
     fontSize: 20,
     color: "black",
     marginBottom: 8,
+  },
+  gateText: {
+    fontFamily: "Poppins_400Regular",
+    fontSize: 14,
+    color: "black",
+    marginBottom: 20,
+  },
+  gateLink: {
+    alignItems: "center",
+    marginTop: 16,
   },
   divider: {
     height: 1,
