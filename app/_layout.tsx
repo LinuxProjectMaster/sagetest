@@ -27,7 +27,8 @@ export default function RootLayout() {
         <Stack.Screen name="+not-found" />
         <Stack.Screen name="features/journal" options={{ headerShown: false }}/>
         <Stack.Screen name="features/explore" options={{ headerShown: false }}/>
-        <Stack.Screen name="features/log-harvest" options={{ headerShown: false }}/>
+        <Stack.Screen name="features/harvests" options={{ headerShown: false }}/>
+        <Stack.Screen name="features/add-area-plant" options={{ headerShown: false }}/>
       </Stack>
       <StatusBar style="auto" />
     </ThemeProvider>

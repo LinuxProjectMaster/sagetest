@@ -1,5 +1,6 @@
 import { Poppins_400Regular, Poppins_600SemiBold, Poppins_700Bold, useFonts } from "@expo-google-fonts/poppins";
 import { Amplify } from "aws-amplify";
+import { Ionicons } from "@expo/vector-icons";
 import { getCurrentUser, signIn, signInWithRedirect, signOut } from "aws-amplify/auth";
 import React, { useEffect, useState } from 'react';
 import { Image, StatusBar, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
@@ -71,6 +72,15 @@ export default function TabLayout() {
     }
   };
 
+  const signInWithApple = async () => {
+    try {
+      await signInWithRedirect({ provider: 'Apple' });
+      setAuthenticated(true);
+    } catch (error) {
+      setMessage(error.message);
+    }
+  };
+
   if (!fontsLoaded) return null;
 
   if (authenticated) return <HomeScreen />;
@@ -82,8 +92,7 @@ export default function TabLayout() {
       <Image source={sageLogo} style={styles.logo} resizeMode="contain"/>
 
       {/* Heading */}
-      <Text style={styles.title}>Welcome back</Text>
-      <Text style={styles.subtitle}>Sign into SAGE Obsever</Text>
+      <Text style={styles.subtitle}>Sign into SAGE Observer</Text>
 
       {/* Divider */}
       <View style={styles.divider} />
@@ -131,6 +140,11 @@ export default function TabLayout() {
         <Image source={googleLogo} style={styles.googleLogo} resizeMode="contain" />
         <Text style={styles.googleButtonText}>Sign in with Google</Text>
       </TouchableOpacity>
+
+      <TouchableOpacity style={styles.appleButton} onPress={signInWithApple} activeOpacity={0.85}>
+        <Ionicons name="logo-apple" size={20} color="#ffffff" />
+        <Text style={styles.appleButtonText}>Sign in with Apple</Text>
+      </TouchableOpacity>
     </View>
   );
 }
@@ -144,8 +158,8 @@ const styles = StyleSheet.create({
   },
   logo: {
   width: "100%",
-  height: 180, // 👈 adjust this
-  marginBottom: 32,
+  height: 135, // 👈 adjust this
+  marginBottom: 12,
   alignSelf: 'center'
 },
   title: {
@@ -156,15 +170,15 @@ const styles = StyleSheet.create({
   },
   subtitle: {
     fontFamily: "Poppins_400Regular",
-    fontSize: 14,
+    fontSize: 20,
     color: "black",
-    marginBottom: 28,
+    marginBottom: 8,
   },
   divider: {
     height: 1,
     backgroundColor: "#656e5f",
     opacity: 0.4,
-    marginBottom: 28,
+    marginBottom: 12,
   },
   inputGroup: {
     marginBottom: 18,
@@ -235,6 +249,22 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     gap: 12,
+  },
+  appleButton: {
+    flexDirection: "row",
+    backgroundColor: "#000000",
+    paddingVertical: 16,
+    borderRadius: 12,
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 12,
+    marginTop: 12,
+  },
+  appleButtonText: {
+    fontFamily: "Poppins_600SemiBold",
+    fontSize: 15,
+    color: "#ffffff",
+    letterSpacing: 0.3,
   },
   googleLogo: {
     width: 20,

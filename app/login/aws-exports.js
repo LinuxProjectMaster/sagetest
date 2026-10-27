@@ -6,7 +6,7 @@ const awsmobile = {
             identityPoolId: "us-east-1:f9b0a105-4efc-4052-ae45-ab1c15c9982a",
             loginWith: {
                 oauth: {
-                    domain: 'growmyownfood.auth.us-east-1.amazoncognito.com',
+                    domain: 'auth.growmyownfood.com',
                     scopes: ['email', 'openid', 'profile', 'aws.cognito.signin.user.admin'],
                     redirectSignIn: ['sagetest://'],
                     redirectSignOut: ['sagetest://'],

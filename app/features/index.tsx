@@ -3,6 +3,7 @@ import { signOut } from "aws-amplify/auth";
 import { Link, useRouter } from "expo-router";
 import {
   Image,
+  ScrollView,
   StatusBar,
   StyleSheet,
   Text,
@@ -35,10 +36,8 @@ export default function HomeScreen() {
   if (!fontsLoaded) return null;
 
   return (
-    <View style={styles.container}>
+    <ScrollView style={styles.container} contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
       <StatusBar barStyle="light-content" />
-
-        <View style={styles.overlay} />
 
         {/* Top bar */}
         <View style={styles.topBar}>
@@ -57,7 +56,7 @@ export default function HomeScreen() {
           </Text>
         </View>
 
-        {/* Bottom action area */}
+        {/* Action area */}
         <View style={styles.actionArea}>
           <View style={styles.divider} />
           <View style={styles.buttonContainer}>
@@ -75,24 +74,34 @@ export default function HomeScreen() {
               <TouchableOpacity style={styles.secondaryButton} activeOpacity={0.85}>
                 <Text style={styles.secondaryButtonIcon}>📖</Text>
                 <View>
-                  <Text style={styles.secondaryButtonLabel}>VIEW JOURNAL</Text>
+                  <Text style={styles.secondaryButtonLabel}>JOURNAL</Text>
                   <Text style={styles.secondaryButtonSub}>Your observations</Text>
                 </View>
               </TouchableOpacity>
             </Link>
 
-            <Link href={"/features/log-harvest"} asChild>
+            <Link href={"/features/harvests"} asChild>
               <TouchableOpacity style={styles.secondaryButton} activeOpacity={0.85}>
                 <Text style={styles.secondaryButtonIcon}>🧺</Text>
                 <View>
-                  <Text style={styles.secondaryButtonLabel}>LOG HARVEST</Text>
-                  <Text style={styles.secondaryButtonSub}>Track what you pick</Text>
+                  <Text style={styles.secondaryButtonLabel}>HARVESTS</Text>
+                  <Text style={styles.secondaryButtonSub}>Log or view what you pick</Text>
+                </View>
+              </TouchableOpacity>
+            </Link>
+
+            <Link href={"/features/add-area-plant"} asChild>
+              <TouchableOpacity style={styles.secondaryButton} activeOpacity={0.85}>
+                <Text style={styles.secondaryButtonIcon}>🌱</Text>
+                <View>
+                  <Text style={styles.secondaryButtonLabel}>ADD TO GARDEN</Text>
+                  <Text style={styles.secondaryButtonSub}>New area or plant</Text>
                 </View>
               </TouchableOpacity>
             </Link>
           </View>
         </View>
-    </View>
+    </ScrollView>
   );
 }
 
@@ -100,6 +109,10 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: "#d0d7c9"
+  },
+  scrollContent: {
+    flexGrow: 1,
+    paddingBottom: 24,
   },
   background: {
     flex: 1,
@@ -115,8 +128,8 @@ const styles = StyleSheet.create({
     justifyContent: "flex-end",
   },
   logo: {
-    width: 250,
-    height: 250,
+    width: 200,
+    height: 200,
     alignSelf: "center",
   },
   logoutButton: {
@@ -136,10 +149,10 @@ const styles = StyleSheet.create({
 
   // Hero
   heroContent: {
-    flex: 1,
     justifyContent: "center",
     paddingHorizontal: 28,
-    paddingTop: 20,
+    paddingTop: 12,
+    paddingBottom: 12,
   },
   subtitleText: {
     color: "#656e5f",
@@ -151,66 +164,65 @@ const styles = StyleSheet.create({
 
   // Actions
   actionArea: {
-    paddingBottom: 52,
     paddingHorizontal: 24,
   },
   divider: {
     height: 1,
     backgroundColor: "#656e5f",
-    marginBottom: 22,
+    marginBottom: 18,
     opacity: 0.5,
   },
   buttonContainer: {
-    gap: 12,
+    gap: 10,
   },
   primaryButton: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 16,
+    gap: 14,
     backgroundColor: "#514942",
-    paddingVertical: 18,
-    paddingHorizontal: 22,
+    paddingVertical: 14,
+    paddingHorizontal: 20,
     borderRadius: 14,
 
   },
   primaryButtonIcon: {
-    fontSize: 24,
+    fontSize: 20,
   },
   primaryButtonLabel: {
     color: "#d0d7cc",
-    fontSize: 12,
+    fontSize: 11,
     fontFamily: "Poppins_700Bold",
-    letterSpacing: 1.5,
+    letterSpacing: 1.2,
   },
   primaryButtonSub: {
     color: "#a2aca4",
-    fontSize: 13,
+    fontSize: 12,
     fontFamily: "Poppins_400Regular",
     marginTop: 2,
   },
   secondaryButton: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 16,
+    gap: 14,
     backgroundColor: "#323232",
-    paddingVertical: 18,
-    paddingHorizontal: 22,
+    paddingVertical: 14,
+    paddingHorizontal: 20,
     borderRadius: 14,
     borderWidth: 1,
     borderColor: "#656e5f",
   },
   secondaryButtonIcon: {
-    fontSize: 24,
+    fontSize: 20,
   },
   secondaryButtonLabel: {
     color: "#d0d7cc",
-    fontSize: 12,
+    fontSize: 11,
     fontFamily: "Poppins_700Bold",
-    letterSpacing: 1.5,
+    letterSpacing: 1.2,
   },
   secondaryButtonSub: {
     color: "#a2aca4",
-    fontSize: 13,
+    fontSize: 12,
     fontFamily: "Poppins_400Regular",
     marginTop: 2,
   },

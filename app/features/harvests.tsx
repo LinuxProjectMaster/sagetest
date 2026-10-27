@@ -1,6 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import { Poppins_400Regular, Poppins_600SemiBold, Poppins_700Bold, useFonts } from "@expo-google-fonts/poppins";
-import { fetchAuthSession, getCurrentUser } from "aws-amplify/auth";
+import { fetchAuthSession } from "aws-amplify/auth";
+import { getResolvedUsername } from "../login/authUser";
 import { useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
 import {
@@ -20,6 +21,7 @@ import {
   View,
 } from 'react-native';
 import { DatePickerModal } from 'react-native-paper-dates';
+import Svg, { Circle, Line, Polyline, Text as SvgText } from 'react-native-svg';
 
 const API_URL = "https://6e3oue93qi.execute-api.us-east-1.amazonaws.com/default/areas";
 const PROFILE_URL = "https://6e3oue93qi.execute-api.us-east-1.amazonaws.com/default/profile";
@@ -39,6 +41,7 @@ type Plant = {
 
 type Area = {
   id: string;
+  name?: string;
   plants?: Plant[];
   [key: string]: any;
 };
@@ -46,6 +49,8 @@ type Area = {
 type PlantOption = { key: string; plantName: string; variety: string; label: string };
 
 type HarvestRow = { plantKey: string; plantName: string; variety: string; amount: string };
+
+type HarvestEntry = { date: string; amount: number; unit: string; plantName: string; variety: string; areaName: string };
 
 const EMPTY_ROW: HarvestRow = { plantKey: "", plantName: "", variety: "", amount: "" };
 
@@ -59,10 +64,59 @@ function getHarvests(plant: Plant) {
   return (plant.harvests as any)?.L ?? [];
 }
 
-export default function LogHarvestScreen() {
+// Minimal line chart (no external chart library) showing one plant's harvest
+// amounts over time, built directly on react-native-svg.
+function PlantHistoryChart({ data, formatWeight }: { data: HarvestEntry[]; formatWeight: (ounces: number) => string }) {
+  const width = 300;
+  const height = 180;
+  const padding = 28;
+
+  if (data.length === 0) {
+    return (
+      <View style={{ height, justifyContent: 'center', alignItems: 'center' }}>
+        <Text style={{ color: '#a2aca4', fontFamily: 'Poppins_400Regular', fontSize: 14 }}>No history for this plant yet.</Text>
+      </View>
+    );
+  }
+
+  const maxAmount = Math.max(...data.map(d => d.amount), 1);
+  const plotWidth = width - padding * 2;
+  const plotHeight = height - padding * 2;
+
+  const points = data.map((d, i) => {
+    const x = padding + (data.length === 1 ? plotWidth / 2 : (i / (data.length - 1)) * plotWidth);
+    const y = padding + plotHeight - (d.amount / maxAmount) * plotHeight;
+    return { x, y, d };
+  });
+
+  const polylinePoints = points.map(p => `${p.x},${p.y}`).join(' ');
+
+  return (
+    <View>
+      <Svg width={width} height={height}>
+        <Line x1={padding} y1={padding} x2={padding} y2={height - padding} stroke="#c8d0c4" strokeWidth={1} />
+        <Line x1={padding} y1={height - padding} x2={width - padding} y2={height - padding} stroke="#c8d0c4" strokeWidth={1} />
+        <SvgText x={padding - 6} y={padding + 4} fontSize={10} fill="#656e5f" textAnchor="end">
+          {formatWeight(maxAmount)}
+        </SvgText>
+        <Polyline points={polylinePoints} fill="none" stroke="#5a8a5e" strokeWidth={2} />
+        {points.map((p, i) => (
+          <Circle key={i} cx={p.x} cy={p.y} r={4} fill="#5a8a5e" />
+        ))}
+      </Svg>
+      <View style={{ flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: padding - 12 }}>
+        <Text style={{ color: '#656e5f', fontSize: 11, fontFamily: 'Poppins_400Regular' }}>{data[0].date}</Text>
+        <Text style={{ color: '#656e5f', fontSize: 11, fontFamily: 'Poppins_400Regular' }}>{data[data.length - 1].date}</Text>
+      </View>
+    </View>
+  );
+}
+
+export default function HarvestsScreen() {
   const router = useRouter();
   const [fontsLoaded] = useFonts({ Poppins_400Regular, Poppins_600SemiBold, Poppins_700Bold });
 
+  const [mode, setMode] = useState<"log" | "view">("log");
   const [userName, setUserName] = useState("");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -74,11 +128,12 @@ export default function LogHarvestScreen() {
   const [rows, setRows] = useState<HarvestRow[]>([{ ...EMPTY_ROW }]);
   const [successMsg, setSuccessMsg] = useState("");
   const [pickerRowIndex, setPickerRowIndex] = useState<number | null>(null);
+  const [selectedPlantKey, setSelectedPlantKey] = useState<{ plantName: string; variety: string } | null>(null);
 
   useEffect(() => {
     (async () => {
-      const user = await getCurrentUser();
-      setUserName(user.username);
+      const username = await getResolvedUsername();
+      setUserName(username);
     })();
   }, []);
 
@@ -103,7 +158,6 @@ export default function LogHarvestScreen() {
         return;
       }
       const profile = Array.isArray(raw) ? raw[0] : raw;
-      console.log("Loaded profile:", profile);
       setUnitMeasurement(profile?.unitmeasurement === "metric" ? "metric" : "imperial");
     } catch (err) {
       console.error("Error loading profile:", err);
@@ -138,7 +192,21 @@ export default function LogHarvestScreen() {
     });
   }
 
-  const weightUnit = unitMeasurement === "metric" ? "kg" : "oz";
+
+  // Formats a stored-in-ounces amount as a human-friendly mixed-unit string:
+  // kilograms with decimals for metric, or "lb + oz" for imperial (rather than
+  // a single large decimal ounce/pound figure).
+  function formatWeight(ounces: number) {
+    if (unitMeasurement === "metric") {
+      return `${(ounces / OUNCES_PER_KG).toFixed(2)} kg`;
+    }
+    const lbs = Math.floor(ounces / 16);
+    const remOz = ounces - lbs * 16;
+    if (lbs > 0) {
+      return remOz > 0.05 ? `${lbs} lb ${remOz.toFixed(1)} oz` : `${lbs} lb`;
+    }
+    return `${remOz.toFixed(1)} oz`;
+  }
 
   const plantOptions: PlantOption[] = (() => {
     const unique = new Map<string, PlantOption>();
@@ -160,6 +228,53 @@ export default function LogHarvestScreen() {
     });
     return Array.from(unique.values()).sort((a, b) => a.label.localeCompare(b.label));
   })();
+
+  // Flatten every logged harvest across all areas/plants for the "View" tab,
+  // most recent first.
+  const harvestHistory: HarvestEntry[] = (() => {
+    const entries: HarvestEntry[] = [];
+    areas.forEach(area => {
+      (area.plants ?? []).forEach(plant => {
+        getHarvests(plant).forEach((h: any) => {
+          entries.push({
+            date: h.date,
+            amount: parseFloat(h.amount) || 0,
+            unit: h.unit || "ounces",
+            plantName: plant.name || plant.species || "Unknown plant",
+            variety: plant.variety || "",
+            areaName: area.name || "",
+          });
+        });
+      });
+    });
+    return entries.sort((a, b) => b.amount - a.amount);
+  })();
+
+  const totalHarvestedOunces = harvestHistory.reduce((sum, h) => sum + h.amount, 0);
+
+  // One row per species (or species+variety when "Include varieties" is on),
+  // summed across every area/date, rather than one row per individual log entry.
+  const aggregatedHarvests: { plantName: string; variety: string; total: number; count: number }[] = (() => {
+    const groups = new Map<string, { plantName: string; variety: string; total: number; count: number }>();
+    harvestHistory.forEach(h => {
+      const variety = includeVarieties ? (h.variety || "") : "";
+      const key = `${h.plantName}__${variety}`;
+      const existing = groups.get(key);
+      if (existing) {
+        existing.total += h.amount;
+        existing.count += 1;
+      } else {
+        groups.set(key, { plantName: h.plantName, variety, total: h.amount, count: 1 });
+      }
+    });
+    return Array.from(groups.values()).sort((a, b) => b.total - a.total);
+  })();
+
+  const selectedPlantHistory: HarvestEntry[] = selectedPlantKey
+    ? harvestHistory
+        .filter(h => h.plantName === selectedPlantKey.plantName && (!includeVarieties || (h.variety || "") === (selectedPlantKey.variety || "")))
+        .sort((a, b) => (a.date < b.date ? -1 : 1))
+    : [];
 
   function updateRow(index: number, changes: Partial<HarvestRow>) {
     setRows(prev => prev.map((row, i) => (i === index ? { ...row, ...changes } : row)));
@@ -213,11 +328,11 @@ export default function LogHarvestScreen() {
 
         if (matched.length === 0 || totalPlants === 0) return;
 
-        // Harvests are always stored in ounces (matches yield_per_plant_ounces
-        // elsewhere in SAGE); convert the entered kg back to ounces here.
-        const enteredOunces = unitMeasurement === "metric"
-          ? parseFloat(row.amount) * OUNCES_PER_KG
-          : parseFloat(row.amount);
+        // Matches plants-log-harvest.jsx: the entered number is stored directly
+        // as ounces, with no unit conversion at log time — SAGE's canonical
+        // harvest unit is always ounces, and unit conversion only happens when
+        // displaying/viewing values, never when logging them.
+        const enteredOunces = parseFloat(row.amount);
 
         matched.forEach(({ area, plantIndex, groupSize }) => {
           const proportion = groupSize / totalPlants;
@@ -260,19 +375,35 @@ export default function LogHarvestScreen() {
         </TouchableOpacity>
         <View>
           <Text style={styles.headerEyebrow}>YOUR GARDEN</Text>
-          <Text style={styles.headerTitle}>Log Harvest</Text>
+          <Text style={styles.headerTitle}>Harvests</Text>
         </View>
         <View style={{ width: 38 }} />
       </View>
 
       <View style={styles.headerDivider} />
 
+      {/* Mode toggle */}
+      <View style={styles.modeRow}>
+        <TouchableOpacity
+          style={[styles.modeButton, mode === "log" && styles.modeButtonActive]}
+          onPress={() => setMode("log")}
+        >
+          <Text style={[styles.modeButtonText, mode === "log" && styles.modeButtonTextActive]}>Log Harvest</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.modeButton, mode === "view" && styles.modeButtonActive]}
+          onPress={() => setMode("view")}
+        >
+          <Text style={[styles.modeButtonText, mode === "view" && styles.modeButtonTextActive]}>View Harvests</Text>
+        </TouchableOpacity>
+      </View>
+
       {loading ? (
         <View style={styles.loadingContainer}>
           <ActivityIndicator color="#81c784" size="large" />
           <Text style={styles.loadingText}>Loading your plants…</Text>
         </View>
-      ) : (
+      ) : mode === "log" ? (
         <KeyboardAvoidingView
           behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
           style={{ flex: 1 }}
@@ -315,7 +446,7 @@ export default function LogHarvestScreen() {
             />
 
             {/* Rows */}
-            <Text style={styles.fieldLabel}>HARVESTS ({weightUnit.toUpperCase()})</Text>
+            <Text style={styles.fieldLabel}>HARVESTS (OZ)</Text>
             {rows.map((row, index) => (
               <View key={index} style={styles.row}>
                 <TouchableOpacity
@@ -335,7 +466,7 @@ export default function LogHarvestScreen() {
                   style={styles.amountInput}
                   value={row.amount}
                   onChangeText={(val) => updateRow(index, { amount: val })}
-                  placeholder={weightUnit}
+                  placeholder="oz"
                   placeholderTextColor="#a2aca4"
                   keyboardType="decimal-pad"
                 />
@@ -371,7 +502,73 @@ export default function LogHarvestScreen() {
             </TouchableOpacity>
           </ScrollView>
         </KeyboardAvoidingView>
+      ) : (
+        <View style={{ flex: 1 }}>
+          <View style={[styles.toggleRow, { paddingHorizontal: 24 }]}>
+            <Text style={styles.toggleLabel}>Include varieties</Text>
+            <Switch
+              value={includeVarieties}
+              onValueChange={setIncludeVarieties}
+              trackColor={{ false: '#c8d0c4', true: '#81c784' }}
+              thumbColor="#ffffff"
+            />
+          </View>
+
+          <View style={styles.totalBanner}>
+            <Text style={styles.totalBannerLabel}>TOTAL HARVESTED</Text>
+            <Text style={styles.totalBannerValue}>{formatWeight(totalHarvestedOunces)}</Text>
+          </View>
+
+          <View style={styles.tableHeaderRow}>
+            <Text style={[styles.tableHeaderText, { flex: 1 }]}>PLANT</Text>
+            <Text style={styles.tableHeaderText}>AMOUNT</Text>
+          </View>
+
+          <FlatList
+            data={aggregatedHarvests}
+            keyExtractor={(item) => `${item.plantName}__${item.variety}`}
+            contentContainerStyle={styles.historyList}
+            renderItem={({ item }) => (
+              <TouchableOpacity
+                style={styles.historyRow}
+                onPress={() => setSelectedPlantKey({ plantName: item.plantName, variety: item.variety })}
+              >
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.historyPlantName} numberOfLines={1}>
+                    {item.variety ? `${item.plantName} (${item.variety})` : item.plantName}
+                  </Text>
+                  <Text style={styles.historyMeta} numberOfLines={1}>{item.count} harvest{item.count === 1 ? "" : "s"}</Text>
+                </View>
+                <Text style={styles.historyAmount}>{formatWeight(item.total)}</Text>
+              </TouchableOpacity>
+            )}
+            ListEmptyComponent={() => (
+              <Text style={styles.pickerEmptyText}>No harvests logged yet.</Text>
+            )}
+          />
+        </View>
       )}
+
+      {/* Per-plant history chart modal */}
+      <Modal
+        animationType="fade"
+        transparent
+        visible={selectedPlantKey !== null}
+        onRequestClose={() => setSelectedPlantKey(null)}
+      >
+        <TouchableWithoutFeedback onPress={() => setSelectedPlantKey(null)}>
+          <View style={styles.modalBackdrop} />
+        </TouchableWithoutFeedback>
+        <View style={styles.chartSheet}>
+          <Text style={styles.pickerSheetTitle} numberOfLines={1}>
+            {selectedPlantKey?.variety ? `${selectedPlantKey.plantName} (${selectedPlantKey.variety})` : selectedPlantKey?.plantName}
+          </Text>
+          <PlantHistoryChart data={selectedPlantHistory} formatWeight={formatWeight} />
+          <TouchableOpacity style={styles.chartCloseButton} onPress={() => setSelectedPlantKey(null)}>
+            <Text style={styles.chartCloseButtonText}>Close</Text>
+          </TouchableOpacity>
+        </View>
+      </Modal>
 
       {/* Plant picker modal */}
       <Modal
@@ -448,6 +645,20 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     marginBottom: 4,
   },
+
+  modeRow: { flexDirection: "row", paddingHorizontal: 24, marginBottom: 16, gap: 10 },
+  modeButton: {
+    flex: 1,
+    paddingVertical: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "#c8d0c4",
+    backgroundColor: "#eaede7",
+    alignItems: "center",
+  },
+  modeButtonActive: { backgroundColor: "#514942", borderColor: "#514942" },
+  modeButtonText: { color: "#656e5f", fontFamily: "Poppins_600SemiBold", fontSize: 13 },
+  modeButtonTextActive: { color: "#d0d7cc" },
 
   loadingContainer: {
     flex: 1,
@@ -587,6 +798,73 @@ const styles = StyleSheet.create({
     letterSpacing: 0.5,
   },
 
+  // ─── View harvests ────────────────────────────────────────────────────────
+  totalBanner: {
+    marginHorizontal: 24,
+    marginBottom: 16,
+    paddingVertical: 16,
+    paddingHorizontal: 20,
+    borderRadius: 14,
+    backgroundColor: "#514942",
+  },
+  totalBannerLabel: {
+    color: "#a2aca4",
+    fontSize: 10,
+    fontFamily: "Poppins_600SemiBold",
+    letterSpacing: 2,
+    marginBottom: 4,
+  },
+  totalBannerValue: {
+    color: "#d0d7cc",
+    fontSize: 24,
+    fontFamily: "Poppins_700Bold",
+  },
+  tableHeaderRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    paddingHorizontal: 24,
+    marginBottom: 8,
+  },
+  tableHeaderText: {
+    color: "#656e5f",
+    fontSize: 10,
+    fontFamily: "Poppins_600SemiBold",
+    letterSpacing: 1.5,
+  },
+  historyList: {
+    paddingHorizontal: 24,
+    paddingBottom: 48,
+  },
+  historyRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    backgroundColor: "#ffffff",
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "#c8d0c4",
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+    marginBottom: 10,
+    gap: 12,
+  },
+  historyPlantName: {
+    color: "#323232",
+    fontFamily: "Poppins_600SemiBold",
+    fontSize: 14,
+  },
+  historyMeta: {
+    color: "#656e5f",
+    fontFamily: "Poppins_400Regular",
+    fontSize: 12,
+    marginTop: 2,
+  },
+  historyAmount: {
+    color: "#5a8a5e",
+    fontFamily: "Poppins_700Bold",
+    fontSize: 14,
+  },
+
   modalBackdrop: {
     ...StyleSheet.absoluteFillObject,
     backgroundColor: 'rgba(0, 0, 0, 0.35)',
@@ -628,5 +906,28 @@ const styles = StyleSheet.create({
     fontSize: 14,
     textAlign: 'center',
     paddingVertical: 20,
+  },
+
+  chartSheet: {
+    position: 'absolute',
+    top: '25%',
+    left: 20,
+    right: 20,
+    backgroundColor: '#f5f7f3',
+    borderRadius: 20,
+    padding: 20,
+    alignItems: 'center',
+  },
+  chartCloseButton: {
+    marginTop: 16,
+    paddingVertical: 10,
+    paddingHorizontal: 24,
+    borderRadius: 10,
+    backgroundColor: '#514942',
+  },
+  chartCloseButtonText: {
+    color: '#d0d7cc',
+    fontFamily: 'Poppins_600SemiBold',
+    fontSize: 13,
   },
 });

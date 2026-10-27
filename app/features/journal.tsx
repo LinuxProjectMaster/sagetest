@@ -1,6 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
-import { fetchAuthSession, getCurrentUser } from "aws-amplify/auth";
+import { fetchAuthSession } from "aws-amplify/auth";
 import { getUrl, remove } from 'aws-amplify/storage';
+import { getResolvedUsername } from "../login/authUser";
 import { Image } from 'expo-image';
 import { useRouter } from 'expo-router';
 import React, { useCallback, useEffect, useState } from 'react';
@@ -17,16 +18,18 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
+import DropDownPicker from 'react-native-dropdown-picker';
+import { DatePickerModal } from 'react-native-paper-dates';
 
 const POST_URL = "https://6e3oue93qi.execute-api.us-east-1.amazonaws.com/default/journal";
 const GET_URL  = "https://6e3oue93qi.execute-api.us-east-1.amazonaws.com/default/journal/list";
 const GET_DAY_URL = POST_URL + "/day";
+const AREAS_URL = "https://6e3oue93qi.execute-api.us-east-1.amazonaws.com/default/areas";
 
 let userName = "";
 
 async function build() {
-  const user = await getCurrentUser();
-  userName = user.username;
+  userName = await getResolvedUsername();
 }
 
 async function getDayNotes(date_str: string, idToken: string | undefined) {
@@ -56,8 +59,24 @@ async function getNotes() {
   return [fullData, idToken];
 }
 
+async function getPlantsAreas(idToken: string | undefined) {
+  const response = await fetch(AREAS_URL, {
+    method: "GET",
+    headers: { Authorization: idToken, username: userName },
+  });
+  return await response.json();
+}
+
+// The backend's date_added can be a full timestamp; we only want Y/M/D in the UI.
+function formatDateOnly(dateStr?: string) {
+  if (!dateStr) return "—";
+  const parsed = new Date(dateStr);
+  if (isNaN(parsed.getTime())) return dateStr.split("T")[0] || dateStr;
+  return parsed.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
+}
+
 async function updateNote(noteData: string, idToken: string) {
-  await fetch(POST_URL, {
+  const response = await fetch(POST_URL, {
     method: "PUT",
     headers: {
       Authorization: idToken,
@@ -66,6 +85,11 @@ async function updateNote(noteData: string, idToken: string) {
     },
     body: noteData,
   });
+  if (!response.ok) {
+    const text = await response.text();
+    console.error("PUT /journal failed:", response.status, text);
+    throw new Error(`PUT failed: ${response.status} ${text}`);
+  }
 }
 
 async function deleteNote(noteId: string, idToken: string, photos: Photo[]) {
@@ -129,10 +153,24 @@ export default function JournalApp() {
   const [fullscreenVisible, setFullscreenVisible] = useState(false);
   const [editMode, setEditMode]             = useState(false);
   const [editedText, setEditedText]         = useState("");
+  const [editedAreaId, setEditedAreaId]     = useState<string | null>(null);
+  const [editedPlantId, setEditedPlantId]   = useState<string | null>(null);
+  const [editedDateAdded, setEditedDateAdded] = useState<Date>(new Date());
+  const [dateAddedPickerOpen, setDateAddedPickerOpen] = useState(false);
+  const [areaOpen, setAreaOpen]             = useState(false);
+  const [plantOpen, setPlantOpen]           = useState(false);
+  const [apiData, setApiData]               = useState<{ name: string; plants: { name?: string; species?: string }[] }[]>([]);
   const [idTokenCache, setIdTokenCache]     = useState<string>("");
   const [animating, setAnimating]           = useState(true);
   const [searchQuery, setSearchQuery]       = useState("");
   const [viewMode, setViewMode]             = useState<'recent' | 'older'>('recent');
+
+  const areaItems = apiData.map(area => ({ label: area.name, value: area.name }));
+  const selectedAreaForEdit = apiData.find(area => area.name === editedAreaId);
+  const plantItems = (selectedAreaForEdit?.plants ?? [])
+    .map(plant => plant.name || plant.species)
+    .filter((name): name is string => !!name)
+    .map(name => ({ label: name, value: name }));
 
   const screenWidth  = Dimensions.get('window').width;
   const numColumns   = 2;
@@ -165,6 +203,24 @@ export default function JournalApp() {
 
   useEffect(() => { loadEntries(); }, [loadEntries]);
 
+  useEffect(() => {
+    (async () => {
+      try {
+        // Resolve the username directly here rather than relying on the
+        // module-level `userName` set by loadEntries()'s build() call — the two
+        // effects run concurrently with no guaranteed ordering, so waiting on
+        // the shared variable could send an empty username header.
+        userName = await getResolvedUsername();
+        const session = await fetchAuthSession();
+        const idToken = session.tokens?.idToken?.toString();
+        const data = await getPlantsAreas(idToken);
+        setApiData(Array.isArray(data) ? data : []);
+      } catch (err) {
+        console.error("Error loading areas for editing:", err);
+      }
+    })();
+  }, []);
+
   const isRecent = (dateStr: string) => {
     const cutoff = new Date();
     cutoff.setDate(cutoff.getDate() - 7);
@@ -185,16 +241,35 @@ export default function JournalApp() {
   const openEntry = (entry: JournalEntry) => {
     setSelectedEntry(entry);
     setEditedText(entry.note.note_text);
+    setEditedAreaId(entry.note.area_id || null);
+    setEditedPlantId(entry.note.plant_id || null);
+    const parsedDate = new Date(entry.note.date_added);
+    setEditedDateAdded(isNaN(parsedDate.getTime()) ? new Date() : parsedDate);
     setEditMode(false);
     setFullscreenVisible(true);
   };
 
   const handleSave = async () => {
     if (!selectedEntry) return;
-    const updated = { ...selectedEntry.note, note_text: editedText };
-    await updateNote(JSON.stringify(updated), idTokenCache);
-    setFullscreenVisible(false);
-    loadEntries();
+    const updated = {
+      ...selectedEntry.note,
+      note_text: editedText,
+      area_id: editedAreaId || "",
+      plant_id: editedPlantId || "",
+      // Store a plain YYYY-MM-DD date rather than a full timestamp, so both
+      // this app and SAGE's web Journal display just the date everywhere.
+      date_added: editedDateAdded.toISOString().split("T")[0],
+      username: userName,
+    };
+    try {
+      await updateNote(JSON.stringify(updated), idTokenCache);
+      setEditMode(false);
+      setFullscreenVisible(false);
+      loadEntries();
+    } catch (err) {
+      console.error("Error saving note:", err);
+      alert("Failed to save changes");
+    }
   };
 
   const handleDelete = async () => {
@@ -465,20 +540,101 @@ export default function JournalApp() {
 
                 <View style={styles.metaDivider} />
 
-                <View style={styles.metaRow}>
-                  <Text style={styles.metaLabel}>Area</Text>
-                  <Text style={styles.metaValue}>{selectedEntry?.note.area_id || "—"}</Text>
-                </View>
-                <View style={styles.metaRow}>
-                  <Text style={styles.metaLabel}>Plant</Text>
-                  <Text style={styles.metaValue}>{selectedEntry?.note.plant_id || "—"}</Text>
-                </View>
-                <View style={styles.metaRow}>
-                  <Text style={styles.metaLabel}>Added</Text>
-                  <Text style={styles.metaValue}>{selectedEntry?.note.date_added || "—"}</Text>
-                </View>
+                {!editMode ? (
+                  <>
+                    <View style={styles.metaRow}>
+                      <Text style={styles.metaLabel}>Area</Text>
+                      <Text style={styles.metaValue}>{selectedEntry?.note.area_id || "—"}</Text>
+                    </View>
+                    <View style={styles.metaRow}>
+                      <Text style={styles.metaLabel}>Plant</Text>
+                      <Text style={styles.metaValue}>{selectedEntry?.note.plant_id || "—"}</Text>
+                    </View>
+                  </>
+                ) : (
+                  <>
+                    <Text style={styles.notePanelLabel}>AREA</Text>
+                    <View style={[styles.editPickerContainer, { zIndex: 3000 }]}>
+                      <DropDownPicker
+                        open={areaOpen}
+                        value={editedAreaId}
+                        items={areaItems}
+                        setOpen={(val) => { Keyboard.dismiss(); setAreaOpen(val); }}
+                        setValue={(callback) => {
+                          const value = callback(editedAreaId);
+                          setEditedAreaId(value);
+                          setEditedPlantId(null);
+                        }}
+                        placeholder="Select an area"
+                        listMode="MODAL"
+                        searchable
+                        searchPlaceholder="Search..."
+                        modalTitle="Select area"
+                        modalProps={{ animationType: "slide" }}
+                        labelProps={{ numberOfLines: 2 }}
+                        listItemContainerStyle={{ height: 'auto', minHeight: 40, paddingVertical: 8 }}
+                        listItemLabelStyle={{ flexShrink: 1 }}
+                        style={styles.editPicker}
+                        dropDownContainerStyle={styles.editDropdown}
+                        zIndex={3000}
+                        zIndexInverse={1000}
+                      />
+                    </View>
+
+                    {plantItems.length > 0 && (
+                      <>
+                        <Text style={styles.notePanelLabel}>PLANT</Text>
+                        <View style={[styles.editPickerContainer, { zIndex: 2000 }]}>
+                          <DropDownPicker
+                            open={plantOpen}
+                            value={editedPlantId}
+                            items={plantItems}
+                            setOpen={(val) => { Keyboard.dismiss(); setPlantOpen(val); }}
+                            setValue={setEditedPlantId}
+                            placeholder="Select a plant"
+                            listMode="MODAL"
+                            searchable
+                            searchPlaceholder="Search..."
+                            modalTitle="Select plant"
+                            modalProps={{ animationType: "slide" }}
+                            labelProps={{ numberOfLines: 2 }}
+                            listItemContainerStyle={{ height: 'auto', minHeight: 40, paddingVertical: 8 }}
+                            listItemLabelStyle={{ flexShrink: 1 }}
+                            style={styles.editPicker}
+                            dropDownContainerStyle={styles.editDropdown}
+                            zIndex={2000}
+                            zIndexInverse={2000}
+                          />
+                        </View>
+                      </>
+                    )}
+                  </>
+                )}
+                {!editMode ? (
+                  <View style={styles.metaRow}>
+                    <Text style={styles.metaLabel}>Added</Text>
+                    <Text style={styles.metaValue}>{formatDateOnly(selectedEntry?.note.date_added)}</Text>
+                  </View>
+                ) : (
+                  <TouchableOpacity style={styles.metaRow} onPress={() => { Keyboard.dismiss(); setDateAddedPickerOpen(true); }}>
+                    <Text style={styles.metaLabel}>Added</Text>
+                    <Text style={styles.metaValue}>{formatDateOnly(editedDateAdded.toISOString())}</Text>
+                  </TouchableOpacity>
+                )}
               </View>
             </ScrollView>
+
+            <DatePickerModal
+              locale="en"
+              mode="single"
+              visible={dateAddedPickerOpen}
+              date={editedDateAdded}
+              onDismiss={() => setDateAddedPickerOpen(false)}
+              onConfirm={({ date }) => {
+                setDateAddedPickerOpen(false);
+                if (date) setEditedDateAdded(date);
+              }}
+            />
 
             <View style={styles.actionBar}>
               {editMode ? (
@@ -880,6 +1036,22 @@ const styles = StyleSheet.create({
     fontFamily: "Poppins_400Regular",
     fontSize: 15,
     textAlignVertical: "top",
+  },
+  editPickerContainer: {
+    width: '100%',
+    marginTop: 8,
+    marginBottom: 14,
+  },
+  editPicker: {
+    backgroundColor: '#ffffff',
+    borderColor: '#c8d0c4',
+    borderRadius: 12,
+    minHeight: 44,
+  },
+  editDropdown: {
+    backgroundColor: '#ffffff',
+    borderColor: '#c8d0c4',
+    borderRadius: 12,
   },
   metaDivider: {
     height: 1,

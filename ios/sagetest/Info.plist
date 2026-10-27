@@ -15,7 +15,7 @@
 	<key>CFBundleInfoDictionaryVersion</key>
 	<string>6.0</string>
 	<key>CFBundleName</key>
-	<string>$(PRODUCT_NAME)</string>
+	<string>SAGE Observer</string>
 	<key>CFBundlePackageType</key>
 	<string>$(PRODUCT_BUNDLE_PACKAGE_TYPE)</string>
 	<key>CFBundleShortVersionString</key>
@@ -45,10 +45,14 @@
 		<key>NSAllowsLocalNetworking</key>
 		<true/>
 	</dict>
+	<key>ITSAppUsesNonExemptEncryption</key>
+	<false/>
 	<key>NSCameraUsageDescription</key>
-	<string>Allow $(PRODUCT_NAME) to access your camera</string>
+	<string>Allow SAGE Observer to use your camera to take photos of your garden for your notes.</string>
 	<key>NSMicrophoneUsageDescription</key>
-	<string>Allow $(PRODUCT_NAME) to access your microphone</string>
+	<string>Allow SAGE Observer to use your microphone to dictate garden notes by voice.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Allow SAGE Observer to access your photo library to attach photos to your garden notes.</string>
 	<key>NSSpeechRecognitionUsageDescription</key>
 	<string>Allow SAGE Observer to use speech recognition to transcribe your notes.</string>
 	<key>NSUserActivityTypes</key>

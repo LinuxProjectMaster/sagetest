@@ -1,6 +1,7 @@
 import { Poppins_400Regular, Poppins_600SemiBold, Poppins_700Bold, useFonts } from "@expo-google-fonts/poppins";
-import { fetchAuthSession, getCurrentUser } from "aws-amplify/auth";
+import { fetchAuthSession } from "aws-amplify/auth";
 import { uploadData } from 'aws-amplify/storage';
+import { getResolvedUsername } from "../login/authUser";
 import { CameraType, CameraView, useCameraPermissions } from 'expo-camera';
 import * as ImageManipulator from 'expo-image-manipulator';
 import { useRouter } from 'expo-router';
@@ -17,8 +18,8 @@ export default function TabTwoScreen() {
   const [userName, setUserName] = useState("")
   const [isSubmitting, setIsSubmitting] = useState(false)
   async function getUsername() {
-    const user = await getCurrentUser();
-    setUserName(user.username)
+    const username = await getResolvedUsername();
+    setUserName(username)
   }
 
   const [fontsLoaded] = useFonts({
@@ -42,8 +43,7 @@ export default function TabTwoScreen() {
   const ref = useRef(null);
   const [previewPicture, setPreviewPicture] = useState(false)
   const [uriPhoto, setUriPhoto] = useState("")
-  const [queuedPhotos, setQueuedPhotos] = useState<{ uri: string; blob: Blob; caption: string }[]>([])
-  const [currentCaption, setCurrentCaption] = useState("")
+  const [confirmedPhoto, setConfirmedPhoto] = useState<{ uri: string; blob: Blob } | null>(null)
   const [areaName, setAreaName] = useState(" ")
   const [plantName, setPlantName] = useState(" ")
   const [areaOpen, setAreaOpen] = useState(false);
@@ -113,7 +113,6 @@ export default function TabTwoScreen() {
   };
 
   const returnToCam = () => {
-    setCurrentCaption("")
     setPreviewPicture(false)
   }
 
@@ -205,7 +204,7 @@ export default function TabTwoScreen() {
 
   function closeModal() {
     setTextModal(false)
-    setQueuedPhotos([])
+    setConfirmedPhoto(null)
     returnToCam()
   }
 
@@ -229,8 +228,9 @@ export default function TabTwoScreen() {
       const plantSet = areaMap.get(item.name);
 
       (item.plants ?? []).forEach(plant => {
-        if (plant?.name) {
-          plantSet.add(plant.name);
+        const plantName = plant?.name || plant?.species;
+        if (plantName) {
+          plantSet.add(plantName);
         }
       });
     });
@@ -245,26 +245,10 @@ export default function TabTwoScreen() {
     setAPIData(areaNames)
   }
 
-  async function addAnotherPhoto() {
+  async function confirmPhoto() {
     const blob = await fetchBlob(uriPhoto);
-    setQueuedPhotos(prev => [...prev, { uri: uriPhoto, blob, caption: currentCaption }]);
-    setCurrentCaption("");
-    setPreviewPicture(false);
-  }
-
-  async function savePic() {
-    const blob = await fetchBlob(uriPhoto);
-    setQueuedPhotos(prev => [...prev, { uri: uriPhoto, blob, caption: currentCaption }]);
-    setCurrentCaption("");
+    setConfirmedPhoto({ uri: uriPhoto, blob });
     await openNoteDetails();
-  }
-
-  function removeQueuedPhoto(index) {
-    setQueuedPhotos(prev => prev.filter((_, i) => i !== index));
-  }
-
-  function updateQueuedPhotoCaption(index, caption) {
-    setQueuedPhotos(prev => prev.map((p, i) => (i === index ? { ...p, caption } : p)));
   }
 
   async function submit() {
@@ -273,8 +257,7 @@ export default function TabTwoScreen() {
   try {
   // Re-fetch userName at submit time to guard against the state not yet
   // being populated when the component first mounted.
-  const currentUser = await getCurrentUser();
-  const resolvedUserName = currentUser.username || userName;
+  const resolvedUserName = (await getResolvedUsername()) || userName;
 
   const today = date.toISOString().split("T")[0];
 
@@ -283,13 +266,13 @@ export default function TabTwoScreen() {
     return;
   }
 
-  if (queuedPhotos.length === 0) {
-    alert("Please add at least one photo");
+  if (!confirmedPhoto) {
+    alert("Please add a photo");
     return;
   }
 
   // Create the note first — the backend assigns its own note_id, so we
-  // can't know the real id (and therefore the S3 paths) until this returns.
+  // can't know the real id (and therefore the S3 path) until this returns.
   const createObj = {
     "username": resolvedUserName,
     "note_text": text,
@@ -301,13 +284,10 @@ export default function TabTwoScreen() {
   const created = await postNote(createObj);
   const note_id = created.note_id;
 
-  const uploadedPhotos = [];
-  for (let i = 0; i < queuedPhotos.length; i++) {
-    const filename = `${note_id}_${i}_capture.jpg`;
-    const path = `public/${resolvedUserName}/journal/${today}/${filename}`;
-    await uploadData({ path, data: queuedPhotos[i].blob });
-    uploadedPhotos.push({ s3_key: path, comment: queuedPhotos[i].caption || "" });
-  }
+  const filename = `${note_id}_0_capture.jpg`;
+  const path = `public/${resolvedUserName}/journal/${today}/${filename}`;
+  await uploadData({ path, data: confirmedPhoto.blob });
+  const uploadedPhotos = [{ s3_key: path, comment: "" }];
 
   await putNote({
     username: resolvedUserName,
@@ -352,13 +332,6 @@ export default function TabTwoScreen() {
         <TouchableOpacity style={styles.backButtonCamera} onPress={() => router.back()}>
           <Ionicons name="chevron-back" size={22} color="white" />
         </TouchableOpacity>
-
-        {queuedPhotos.length > 0 && (
-          <TouchableOpacity style={styles.doneButtonCamera} onPress={openNoteDetails}>
-            <Text style={styles.doneButtonCameraText}>Done · {queuedPhotos.length}</Text>
-            <Ionicons name="checkmark-circle" size={18} color="white" />
-          </TouchableOpacity>
-        )}
 
         {/* Top label */}
         <View style={styles.cameraTopBar}>
@@ -407,25 +380,11 @@ export default function TabTwoScreen() {
 
             <View style={styles.divider} />
 
-            {/* Queued photos */}
-            <Text style={styles.fieldLabel}>PHOTOS ({queuedPhotos.length})</Text>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.photoStrip}>
-              {queuedPhotos.map((p, index) => (
-                <View key={index} style={styles.photoThumbWrapper}>
-                  <Image source={{ uri: p.uri }} style={styles.photoThumb} />
-                  <TouchableOpacity style={styles.photoThumbRemove} onPress={() => removeQueuedPhoto(index)}>
-                    <Ionicons name="close" size={12} color="white" />
-                  </TouchableOpacity>
-                  <TextInput
-                    style={styles.photoCaptionInput}
-                    onChangeText={(value) => updateQueuedPhotoCaption(index, value)}
-                    value={p.caption}
-                    placeholder="Caption"
-                    placeholderTextColor="#a2aca4"
-                  />
-                </View>
-              ))}
-            </ScrollView>
+            {/* Photo */}
+            <Text style={styles.fieldLabel}>PHOTO</Text>
+            {confirmedPhoto && (
+              <Image source={{ uri: confirmedPhoto.uri }} style={styles.confirmedPhotoPreview} />
+            )}
 
             {/* Note input */}
             <View style={styles.fieldLabelRow}>
@@ -484,6 +443,14 @@ export default function TabTwoScreen() {
                   setPlantName(null);
                 }}
                 placeholder="Select an area"
+                listMode="MODAL"
+                searchable
+                searchPlaceholder="Search..."
+                modalTitle="Select area"
+                modalProps={{ animationType: "slide" }}
+                labelProps={{ numberOfLines: 2 }}
+                listItemContainerStyle={{ height: 'auto', minHeight: 40, paddingVertical: 8 }}
+                listItemLabelStyle={{ flexShrink: 1 }}
                 disabled={areaItems.length === 0}
                 style={styles.picker}
                 dropDownContainerStyle={styles.dropdown}
@@ -505,6 +472,14 @@ export default function TabTwoScreen() {
                   setOpen={(val) => { Keyboard.dismiss(); setPlantOpen(val); }}
                   setValue={setPlantName}
                   placeholder="Select a plant"
+                  listMode="MODAL"
+                  searchable
+                  searchPlaceholder="Search..."
+                  modalTitle="Select plant"
+                  modalProps={{ animationType: "slide" }}
+                  labelProps={{ numberOfLines: 2 }}
+                  listItemContainerStyle={{ height: 'auto', minHeight: 40, paddingVertical: 8 }}
+                  listItemLabelStyle={{ flexShrink: 1 }}
                   style={styles.picker}
                   dropDownContainerStyle={styles.dropdown}
                   textStyle={styles.pickerText}
@@ -551,36 +526,16 @@ export default function TabTwoScreen() {
       {/* Preview label */}
       <View style={styles.previewTopBar}>
         <Text style={styles.cameraEyebrow}>PREVIEW</Text>
-        {queuedPhotos.length > 0 && (
-          <Text style={styles.previewCountText}>{queuedPhotos.length} photo{queuedPhotos.length === 1 ? "" : "s"} added already</Text>
-        )}
       </View>
-
-      <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        style={styles.previewCaptionBar}
-      >
-        <TextInput
-          style={styles.previewCaptionInput}
-          onChangeText={setCurrentCaption}
-          value={currentCaption}
-          placeholder="Add a caption for this photo"
-          placeholderTextColor="rgba(255,255,255,0.6)"
-        />
-      </KeyboardAvoidingView>
 
       <View style={styles.bigButtonRow}>
         <TouchableOpacity style={styles.redoButton} onPress={returnToCam}>
-          <Ionicons name="arrow-back-outline" size={14} color="#d0d7cc" />
-          <Text style={styles.saveButtonText} numberOfLines={1}>Redo</Text>
+          <Ionicons name="arrow-back-outline" size={16} color="#d0d7cc" />
+          <Text style={styles.saveButtonText} numberOfLines={1}>Retake</Text>
         </TouchableOpacity>
-        <TouchableOpacity style={styles.addAnotherButton} onPress={addAnotherPhoto}>
-          <Ionicons name="add" size={14} color="#d0d7cc" />
-          <Text style={styles.saveButtonText} numberOfLines={1}>Add More</Text>
-        </TouchableOpacity>
-        <TouchableOpacity style={styles.saveButton} onPress={savePic}>
+        <TouchableOpacity style={styles.saveButton} onPress={confirmPhoto}>
           <Text style={styles.saveButtonText} numberOfLines={1}>Continue</Text>
-          <Ionicons name="arrow-forward" size={14} color="#d0d7cc" />
+          <Ionicons name="arrow-forward" size={16} color="#d0d7cc" />
         </TouchableOpacity>
       </View>
     </View>
@@ -656,24 +611,6 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     zIndex: 1,
   },
-  doneButtonCamera: {
-    position: 'absolute',
-    top: 56,
-    right: 20,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    paddingVertical: 8,
-    paddingHorizontal: 14,
-    backgroundColor: '#5a8a5e',
-    borderRadius: 20,
-    zIndex: 1,
-  },
-  doneButtonCameraText: {
-    color: 'white',
-    fontSize: 13,
-    fontFamily: 'Poppins_600SemiBold',
-  },
   cameraEyebrow: {
     color: '#81c784',
     fontSize: 11,
@@ -725,26 +662,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 4,
   },
-  previewCountText: {
-    color: 'white',
-    fontSize: 12,
-    fontFamily: 'Poppins_400Regular',
-  },
-  previewCaptionBar: {
-    position: 'absolute',
-    bottom: 128,
-    left: 20,
-    right: 20,
-  },
-  previewCaptionInput: {
-    backgroundColor: 'rgba(0,0,0,0.45)',
-    borderRadius: 12,
-    paddingVertical: 10,
-    paddingHorizontal: 14,
-    color: 'white',
-    fontFamily: 'Poppins_400Regular',
-    fontSize: 14,
-  },
   bigButtonRow: {
     position: 'absolute',
     bottom: 52,
@@ -756,11 +673,11 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
   },
   redoButton: {
-    flex: 0.8,
+    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 4,
+    gap: 6,
     backgroundColor: 'rgba(50, 50, 50, 0.85)',
     paddingVertical: 15,
     paddingHorizontal: 4,
@@ -768,23 +685,12 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#656e5f',
   },
-  addAnotherButton: {
-    flex: 0.9,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 4,
-    backgroundColor: 'rgba(90, 138, 94, 0.85)',
-    paddingVertical: 15,
-    paddingHorizontal: 4,
-    borderRadius: 14,
-  },
   saveButton: {
-    flex: 1.3,
+    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 4,
+    gap: 6,
     backgroundColor: '#514942',
     paddingVertical: 15,
     paddingHorizontal: 4,
@@ -792,9 +698,9 @@ const styles = StyleSheet.create({
   },
   saveButtonText: {
     color: '#d0d7cc',
-    fontSize: 12,
+    fontSize: 13,
     fontFamily: 'Poppins_600SemiBold',
-    letterSpacing: 0,
+    letterSpacing: 0.2,
     flexShrink: 1,
   },
 
@@ -863,42 +769,12 @@ const styles = StyleSheet.create({
     backgroundColor: '#5a8a5e',
     borderColor: '#5a8a5e',
   },
-  photoStrip: {
-    marginBottom: 18,
-  },
-  photoThumbWrapper: {
-    marginRight: 10,
-    width: 72,
-  },
-  photoThumb: {
-    width: 72,
-    height: 72,
-    borderRadius: 10,
+  confirmedPhotoPreview: {
+    width: '100%',
+    height: 180,
+    borderRadius: 14,
     backgroundColor: '#eaede7',
-  },
-  photoCaptionInput: {
-    marginTop: 4,
-    fontSize: 11,
-    fontFamily: 'Poppins_400Regular',
-    color: '#514942',
-    textAlign: 'center',
-    borderWidth: 1,
-    borderColor: '#d7dcd2',
-    borderRadius: 6,
-    backgroundColor: '#f4f6f1',
-    paddingVertical: 4,
-    paddingHorizontal: 4,
-  },
-  photoThumbRemove: {
-    position: 'absolute',
-    top: -6,
-    right: -6,
-    width: 20,
-    height: 20,
-    borderRadius: 10,
-    backgroundColor: '#514942',
-    justifyContent: 'center',
-    alignItems: 'center',
+    marginBottom: 18,
   },
   optionalTag: {
     color: '#a2aca4',
